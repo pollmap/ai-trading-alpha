@@ -6,7 +6,7 @@ import json
 import re
 from datetime import datetime, timezone
 
-from uuid7 import uuid7
+from uuid_extensions import uuid7
 
 from src.core.logging import get_logger
 from src.core.types import (

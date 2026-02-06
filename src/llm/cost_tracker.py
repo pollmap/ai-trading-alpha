@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import AsyncIterator
 
-from uuid7 import uuid7
+from uuid_extensions import uuid7
 
 from src.core.logging import get_logger
 
