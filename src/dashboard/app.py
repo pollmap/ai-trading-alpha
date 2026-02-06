@@ -24,11 +24,17 @@ KST: timezone = timezone(timedelta(hours=9))
 PAGE_OVERVIEW: str = "Overview"
 PAGE_MODEL_COMPARISON: str = "Model Comparison"
 PAGE_SYSTEM_STATUS: str = "System Status"
+PAGE_RISK_DASHBOARD: str = "Risk Dashboard"
+PAGE_REGIME_ANALYSIS: str = "Regime Analysis"
+PAGE_REPLAY_VIEWER: str = "Replay Viewer"
 
 PAGES: list[str] = [
     PAGE_OVERVIEW,
     PAGE_MODEL_COMPARISON,
     PAGE_SYSTEM_STATUS,
+    PAGE_RISK_DASHBOARD,
+    PAGE_REGIME_ANALYSIS,
+    PAGE_REPLAY_VIEWER,
 ]
 
 
@@ -118,6 +124,18 @@ def main() -> None:
         render()
     elif selected_page == PAGE_SYSTEM_STATUS:
         from src.dashboard.pages.system_status import render
+
+        render()
+    elif selected_page == PAGE_RISK_DASHBOARD:
+        from src.dashboard.pages.risk_dashboard import render
+
+        render()
+    elif selected_page == PAGE_REGIME_ANALYSIS:
+        from src.dashboard.pages.regime_analysis import render
+
+        render()
+    elif selected_page == PAGE_REPLAY_VIEWER:
+        from src.dashboard.pages.replay_viewer import render
 
         render()
     else:

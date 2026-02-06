@@ -48,20 +48,63 @@ Evaluate using ALL of these dimensions:
 IMPORTANT: Always provide substantive reasoning. Empty or trivial reasoning is not acceptable."""
 
 
-def build_user_prompt(snapshot: MarketSnapshot, portfolio: PortfolioState) -> str:
-    """Build the user prompt with current market data and portfolio state."""
-    return f"""## Current Market Data
+def build_user_prompt(
+    snapshot: MarketSnapshot,
+    portfolio: PortfolioState,
+    indicators_text: str = "",
+    regime_text: str = "",
+    reflection_text: str = "",
+    social_text: str = "",
+    onchain_text: str = "",
+) -> str:
+    """Build the user prompt with current market data, portfolio, and v2 context.
 
-{snapshot.to_prompt_summary()}
+    Args:
+        snapshot: Current market data snapshot.
+        portfolio: Current portfolio state.
+        indicators_text: Pre-formatted technical indicators (from IndicatorEngine).
+        regime_text: Market regime context (from RegimeDetector.to_prompt_context).
+        reflection_text: Self-reflection text (from AgentReflector.generate_reflection).
+        social_text: Social sentiment summary (from SocialSentimentAdapter).
+        onchain_text: On-chain analytics summary (from OnChainAdapter).
+    """
+    sections: list[str] = [
+        "## Current Market Data",
+        "",
+        snapshot.to_prompt_summary(),
+    ]
 
-## Current Portfolio
+    if indicators_text:
+        sections.extend(["", "## Technical Indicators", indicators_text])
 
-{portfolio.to_prompt_summary()}
+    if regime_text:
+        sections.extend(["", "## Market Regime", regime_text])
 
-## Task
-Based on the market data and your current portfolio above, generate a trading signal.
-Choose ONE symbol to act on (or HOLD if no action is warranted).
-Provide your analysis and reasoning."""
+    if onchain_text:
+        sections.extend(["", "## On-Chain Data", onchain_text])
+
+    if social_text:
+        sections.extend(["", "## Social Sentiment", social_text])
+
+    sections.extend([
+        "",
+        "## Current Portfolio",
+        "",
+        portfolio.to_prompt_summary(),
+    ])
+
+    if reflection_text:
+        sections.extend(["", reflection_text])
+
+    sections.extend([
+        "",
+        "## Task",
+        "Based on the market data and your current portfolio above, generate a trading signal.",
+        "Choose ONE symbol to act on (or HOLD if no action is warranted).",
+        "Provide your analysis and reasoning.",
+    ])
+
+    return "\n".join(sections)
 
 
 def _market_context(market: Market) -> str:
