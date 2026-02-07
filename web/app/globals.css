@@ -1,0 +1,80 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg-primary: #0f1117;
+  --bg-card: #1a1d29;
+  --border-color: #2d3148;
+  --accent: #6366f1;
+}
+
+body {
+  background-color: var(--bg-primary);
+  color: #e2e8f0;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+/* Metric card */
+.metric-card {
+  @apply bg-atlas-card border border-atlas-border rounded-xl p-4;
+}
+
+/* Chart container */
+.chart-container {
+  @apply bg-atlas-card border border-atlas-border rounded-xl p-4;
+}
+
+/* Status badges */
+.badge-pass {
+  @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-900/30 text-green-400;
+}
+
+.badge-fail {
+  @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-900/30 text-red-400;
+}
+
+.badge-warn {
+  @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-900/30 text-yellow-400;
+}
+
+/* Nav link */
+.nav-link {
+  @apply flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors;
+}
+
+.nav-link:hover {
+  @apply bg-atlas-border/50 text-white;
+}
+
+.nav-link.active {
+  @apply bg-atlas-accent/20 text-atlas-accent;
+}
+
+/* Table styling */
+.data-table {
+  @apply w-full text-sm;
+}
+
+.data-table th {
+  @apply px-4 py-3 text-left text-xs font-medium text-atlas-muted uppercase tracking-wider border-b border-atlas-border;
+}
+
+.data-table td {
+  @apply px-4 py-3 border-b border-atlas-border/50;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--bg-primary);
+}
+
+::-webkit-scrollbar-thumb {
+  background: #4b5563;
+  border-radius: 3px;
+}
