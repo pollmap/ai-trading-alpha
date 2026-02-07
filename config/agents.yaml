@@ -1,0 +1,71 @@
+# ATLAS — Agent Configuration
+
+models:
+  deepseek:
+    provider: deepseek
+    model_name: "deepseek-reasoner"
+    base_url: "https://api.deepseek.com"
+    timeout_seconds: 60
+    temperature: 0.0
+    max_retries: 3
+    pricing:
+      input_per_million: 0.55
+      output_per_million: 2.19
+      cache_hit_per_million: 0.07
+
+  gemini:
+    provider: gemini
+    model_name: "gemini-2.5-pro-preview-06-05"
+    timeout_seconds: 60
+    temperature: 0.0
+    max_retries: 3
+    pricing:
+      input_per_million: 1.25
+      output_per_million: 10.0
+      cache_hit_per_million: 0.0
+
+  claude:
+    provider: claude
+    model_name: "claude-sonnet-4-5-20250514"
+    timeout_seconds: 60
+    temperature: 0.0
+    max_retries: 3
+    extended_thinking: false
+    pricing:
+      input_per_million: 3.0
+      output_per_million: 15.0
+      cache_hit_per_million: 0.30
+
+  gpt:
+    provider: gpt
+    model_name: "gpt-4o-mini"
+    timeout_seconds: 60
+    temperature: 0.0
+    max_retries: 3
+    pricing:
+      input_per_million: 0.15
+      output_per_million: 0.60
+      cache_hit_per_million: 0.0
+
+architectures:
+  - single
+  - multi
+
+multi_agent:
+  debate_rounds: 2
+  analyst_timeout_seconds: 60
+  trader_timeout_seconds: 60
+  risk_veto_max_retries: 2
+
+orchestrator:
+  single_agent_timeout_seconds: 30
+  multi_agent_timeout_seconds: 120
+  cycle_failure_retry_delay_seconds: 60
+
+event_triggers:
+  price_change_threshold: 0.03    # 3%
+  vix_change_threshold: 0.20      # 20%
+  fx_change_threshold: 0.01       # 1%
+  fear_greed_low: 20
+  fear_greed_high: 80
+  cooldown_minutes: 15

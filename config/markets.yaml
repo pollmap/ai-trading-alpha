@@ -1,0 +1,106 @@
+# ATLAS — Market Configuration
+# Each market defines its symbol universe, trading parameters, and schedule.
+
+KRX:
+  currency: KRW
+  initial_capital: 100_000_000  # 1억원
+  cycle_interval_minutes: 30
+  trading_hours:
+    start: "09:00"  # KST
+    end: "15:30"    # KST
+    timezone: "Asia/Seoul"
+  commission:
+    buy: 0.00015    # 0.015%
+    sell: 0.00015   # 0.015%
+    tax: 0.0018     # 0.18% (매도 시 증권거래세)
+  slippage: 0.001   # 0.1%
+  max_position_weight: 0.30  # 30%
+  min_cash_ratio: 0.20       # 20%
+  symbols:
+    - "005930"   # 삼성전자
+    - "000660"   # SK하이닉스
+    - "373220"   # LG에너지솔루션
+    - "207940"   # 삼성바이오로직스
+    - "005380"   # 현대차
+    - "006400"   # 삼성SDI
+    - "051910"   # LG화학
+    - "035420"   # NAVER
+    - "000270"   # 기아
+    - "068270"   # 셀트리온
+    - "035720"   # 카카오
+    - "105560"   # KB금융
+    - "055550"   # 신한지주
+    - "012330"   # 현대모비스
+    - "066570"   # LG전자
+    - "003550"   # LG
+    - "034730"   # SK
+    - "015760"   # 한국전력
+    - "003670"   # 포스코퓨처엠
+    - "028260"   # 삼성물산
+    - "032830"   # 삼성생명
+    - "259960"   # 크래프톤
+    - "086790"   # 하나금융지주
+    - "010130"   # 고려아연
+    - "009150"   # 삼성전기
+    - "018260"   # 삼성에스디에스
+    - "033780"   # KT&G
+    - "316140"   # 우리금융지주
+    - "011200"   # HMM
+    - "030200"   # KT
+
+US:
+  currency: USD
+  initial_capital: 100_000
+  cycle_interval_minutes: 30
+  trading_hours:
+    start: "09:30"   # EST
+    end: "16:00"     # EST
+    timezone: "America/New_York"
+  commission:
+    buy: 0.0
+    sell: 0.0
+    tax: 0.0
+  slippage: 0.001
+  max_position_weight: 0.30
+  min_cash_ratio: 0.20
+  symbols:
+    - "AAPL"
+    - "MSFT"
+    - "NVDA"
+    - "AMZN"
+    - "GOOGL"
+    - "META"
+    - "BRK-B"
+    - "TSLA"
+    - "UNH"
+    - "JPM"
+    - "V"
+    - "XOM"
+    - "JNJ"
+    - "WMT"
+    - "PG"
+    - "MA"
+    - "HD"
+    - "AVGO"
+    - "LLY"
+    - "COST"
+
+CRYPTO:
+  currency: USDT
+  initial_capital: 100_000
+  cycle_interval_minutes: 15
+  trading_hours:
+    start: "00:00"  # 24/7
+    end: "23:59"
+    timezone: "UTC"
+  commission:
+    buy: 0.001   # 0.1% taker
+    sell: 0.001  # 0.1% taker
+    tax: 0.0
+  slippage: 0.001
+  max_position_weight: 0.30
+  min_cash_ratio: 0.20
+  symbols:
+    - "BTCUSDT"
+    - "ETHUSDT"
+    - "SOLUSDT"
