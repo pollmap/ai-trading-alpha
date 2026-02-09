@@ -8,6 +8,11 @@ from http.server import BaseHTTPRequestHandler
 import json
 from datetime import datetime, timezone
 
+CORS_HEADERS = {
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Methods": "GET, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type",
+}
 
 MOCK_PORTFOLIOS = [
     {
@@ -53,6 +58,20 @@ MOCK_PORTFOLIOS = [
         "api_cost": 8.30,
     },
     {
+        "model": "gemini",
+        "architecture": "multi",
+        "market": "CRYPTO",
+        "total_value": 109_500,
+        "initial_capital": 100_000,
+        "cash": 31_200,
+        "return_pct": 9.5,
+        "sharpe_ratio": 1.55,
+        "max_drawdown": -5.8,
+        "total_trades": 41,
+        "win_rate": 0.57,
+        "api_cost": 32.10,
+    },
+    {
         "model": "claude",
         "architecture": "single",
         "market": "CRYPTO",
@@ -81,7 +100,7 @@ MOCK_PORTFOLIOS = [
         "api_cost": 58.40,
     },
     {
-        "model": "gpt",
+        "model": "gpt-4o-mini",
         "architecture": "single",
         "market": "CRYPTO",
         "total_value": 105_900,
@@ -93,6 +112,20 @@ MOCK_PORTFOLIOS = [
         "total_trades": 56,
         "win_rate": 0.52,
         "api_cost": 6.20,
+    },
+    {
+        "model": "gpt-4o-mini",
+        "architecture": "multi",
+        "market": "CRYPTO",
+        "total_value": 108_100,
+        "initial_capital": 100_000,
+        "cash": 33_400,
+        "return_pct": 8.1,
+        "sharpe_ratio": 1.38,
+        "max_drawdown": -6.0,
+        "total_trades": 43,
+        "win_rate": 0.56,
+        "api_cost": 22.80,
     },
     {
         "model": "buy_and_hold",
@@ -112,15 +145,31 @@ MOCK_PORTFOLIOS = [
 
 
 class handler(BaseHTTPRequestHandler):
-    def do_GET(self) -> None:
-        self.send_response(200)
-        self.send_header("Content-Type", "application/json")
-        self.send_header("Access-Control-Allow-Origin", "*")
+    def _send_cors_headers(self) -> None:
+        for key, value in CORS_HEADERS.items():
+            self.send_header(key, value)
+
+    def do_OPTIONS(self) -> None:
+        self.send_response(204)
+        self._send_cors_headers()
         self.end_headers()
 
-        response = {
-            "portfolios": MOCK_PORTFOLIOS,
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-            "market": "CRYPTO",
-        }
-        self.wfile.write(json.dumps(response).encode())
+    def do_GET(self) -> None:
+        try:
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self._send_cors_headers()
+            self.end_headers()
+
+            response = {
+                "portfolios": MOCK_PORTFOLIOS,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "market": "CRYPTO",
+            }
+            self.wfile.write(json.dumps(response).encode())
+        except Exception as e:
+            self.send_response(500)
+            self.send_header("Content-Type", "application/json")
+            self._send_cors_headers()
+            self.end_headers()
+            self.wfile.write(json.dumps({"error": str(e)}).encode())
