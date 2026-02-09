@@ -1,18 +1,12 @@
 {
   "version": 2,
   "framework": "nextjs",
-  "buildCommand": "cd web && npm install && npm run build",
-  "outputDirectory": "web/.next",
-  "installCommand": "cd web && npm install",
-  "rewrites": [
+  "headers": [
     {
-      "source": "/api/:path*",
-      "destination": "/api/:path*"
+      "source": "/api/(.*)",
+      "headers": [
+        { "key": "Cache-Control", "value": "s-maxage=30, stale-while-revalidate=60" }
+      ]
     }
-  ],
-  "functions": {
-    "api/**/*.py": {
-      "runtime": "@vercel/python@4.0.0"
-    }
-  }
+  ]
 }
