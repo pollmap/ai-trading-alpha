@@ -2,8 +2,6 @@
 
 import { useState } from "react";
 import MetricCard from "@/components/MetricCard";
-import ExportButton from "@/components/ExportButton";
-import { useI18n } from "@/lib/i18n";
 
 const MOCK_SESSIONS = [
   { id: "benchmark-2026-01-15-full", events: 1247, snapshots: 48, signals: 384, trades: 156, date: "2026-01-15" },
@@ -36,7 +34,6 @@ const EVENT_COLORS: Record<string, string> = {
 };
 
 export default function ReplayViewerPage() {
-  const { t } = useI18n();
   const [selectedSession, setSelectedSession] = useState(MOCK_SESSIONS[0]);
   const [filterTypes, setFilterTypes] = useState<string[]>(["signal", "trade", "risk_check"]);
 
@@ -50,23 +47,16 @@ export default function ReplayViewerPage() {
     );
   };
 
-  const eventExportData = filteredEvents.map((e) => ({
-    seq: e.seq,
-    type: e.type,
-    time: e.time,
-    detail: e.detail,
-  }));
-
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-bold text-white">{t("replayTitle")}</h1>
-        <p className="text-atlas-muted mt-1">{t("replayDesc")}</p>
+        <h1 className="text-3xl font-bold text-white">Replay Viewer</h1>
+        <p className="text-atlas-muted mt-1">Browse and inspect recorded trading sessions</p>
       </div>
 
       {/* Session Selector */}
       <div className="chart-container">
-        <h2 className="text-lg font-semibold text-white mb-3">{t("selectSession")}</h2>
+        <h2 className="text-lg font-semibold text-white mb-3">Select Session</h2>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           {MOCK_SESSIONS.map((sess) => (
             <button
@@ -88,15 +78,15 @@ export default function ReplayViewerPage() {
 
       {/* Session Overview */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <MetricCard label={t("totalEvents")} value={selectedSession.events.toLocaleString()} />
-        <MetricCard label={t("snapshots")} value={selectedSession.snapshots.toString()} />
-        <MetricCard label={t("signals")} value={selectedSession.signals.toString()} />
-        <MetricCard label={t("trades")} value={selectedSession.trades.toString()} />
+        <MetricCard label="Total Events" value={selectedSession.events.toLocaleString()} />
+        <MetricCard label="Snapshots" value={selectedSession.snapshots.toString()} />
+        <MetricCard label="Signals" value={selectedSession.signals.toString()} />
+        <MetricCard label="Trades" value={selectedSession.trades.toString()} />
       </div>
 
       {/* Event Filter */}
       <div className="chart-container">
-        <h2 className="text-lg font-semibold text-white mb-3">{t("eventFilter")}</h2>
+        <h2 className="text-lg font-semibold text-white mb-3">Event Filter</h2>
         <div className="flex flex-wrap gap-2">
           {Object.keys(EVENT_COLORS).map((type) => (
             <button
@@ -116,10 +106,7 @@ export default function ReplayViewerPage() {
 
       {/* Event Timeline */}
       <div className="chart-container">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-semibold text-white">{t("eventTimeline")}</h2>
-          <ExportButton data={eventExportData} filename="atlas-replay-events" />
-        </div>
+        <h2 className="text-lg font-semibold text-white mb-4">Event Timeline</h2>
         <div className="space-y-2">
           {filteredEvents.map((event) => (
             <div
@@ -139,7 +126,7 @@ export default function ReplayViewerPage() {
 
       {/* Decision Trail Example */}
       <div className="chart-container">
-        <h2 className="text-lg font-semibold text-white mb-4">{t("decisionTrail")}</h2>
+        <h2 className="text-lg font-semibold text-white mb-4">Decision Trail</h2>
         <div className="space-y-3">
           {[
             { step: 1, label: "Snapshot", detail: "Market data collected (005930: 71,200 KRW)", color: "border-purple-500" },

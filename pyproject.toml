@@ -62,14 +62,6 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-reports = [
-    "openpyxl>=3.1",
-    "python-docx>=1.1",
-    "reportlab>=4.0",
-]
-gpu = [
-    "torch>=2.0",
-]
 dev = [
     "pytest>=8.0",
     "pytest-asyncio>=0.23",

@@ -1,39 +1,36 @@
 """Risk metrics endpoint for Vercel serverless."""
+
 from http.server import BaseHTTPRequestHandler
 import json
+from datetime import datetime, timezone
 
-CORS_HEADERS = {
-    "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Methods": "GET, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization",
-}
 
 class handler(BaseHTTPRequestHandler):
-    def _cors(self) -> None:
-        for k, v in CORS_HEADERS.items():
-            self.send_header(k, v)
-
-    def do_OPTIONS(self) -> None:
-        self.send_response(204)
-        self._cors()
+    def do_GET(self) -> None:
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Access-Control-Allow-Origin", "*")
         self.end_headers()
 
-    def do_GET(self) -> None:
-        try:
-            from api.lib.auth import check_auth
-            from api.lib.db import get_provider
-            if not check_auth(self):
-                return
-            provider = get_provider()
-            response = provider.get_risk_metrics()
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json")
-            self._cors()
-            self.end_headers()
-            self.wfile.write(json.dumps(response).encode())
-        except Exception as e:
-            self.send_response(500)
-            self.send_header("Content-Type", "application/json")
-            self._cors()
-            self.end_headers()
-            self.wfile.write(json.dumps({"error": str(e)}).encode())
+        response = {
+            "portfolio_var_95": 0.023,
+            "max_drawdown": 0.082,
+            "current_drawdown": 0.031,
+            "daily_loss": 0.004,
+            "volatility_regime": "normal",
+            "checks": [
+                {"name": "position_limit", "passed": True, "value": 0.22, "limit": 0.30},
+                {"name": "cash_reserve", "passed": True, "value": 0.352, "limit": 0.20},
+                {"name": "confidence", "passed": True, "value": 0.75, "limit": 0.30},
+                {"name": "drawdown_circuit_breaker", "passed": True, "value": 0.031, "limit": 0.15},
+                {"name": "daily_loss_limit", "passed": True, "value": 0.004, "limit": 0.05},
+            ],
+            "positions": [
+                {"symbol": "BTCUSDT", "weight": 0.22, "value": 22000},
+                {"symbol": "ETHUSDT", "weight": 0.18, "value": 18000},
+                {"symbol": "AAPL", "weight": 0.15, "value": 15000},
+                {"symbol": "005930", "weight": 0.10, "value": 10000},
+            ],
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        }
+        self.wfile.write(json.dumps(response).encode())

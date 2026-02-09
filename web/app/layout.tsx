@@ -1,18 +1,10 @@
-import type { Metadata, Viewport } from "next";
+import type { Metadata } from "next";
 import "./globals.css";
 import Sidebar from "@/components/Sidebar";
-import Providers from "@/components/Providers";
 
 export const metadata: Metadata = {
   title: "ATLAS Dashboard",
-  description: "AI Trading Lab for Agent Strategy -- 4 LLMs x 2 Architectures Benchmark Dashboard",
-  icons: { icon: "/favicon.svg" },
-};
-
-export const viewport: Viewport = {
-  width: "device-width",
-  initialScale: 1,
-  themeColor: "#0f1117",
+  description: "AI Trading Lab for Agent Strategy — Benchmark Dashboard",
 };
 
 export default function RootLayout({
@@ -21,14 +13,10 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="ko" className="dark">
+    <html lang="en" className="dark">
       <body className="flex min-h-screen">
-        <Providers>
-          <Sidebar />
-          <main className="flex-1 lg:ml-64 p-4 pt-16 lg:pt-6 lg:p-6 overflow-auto">
-            {children}
-          </main>
-        </Providers>
+        <Sidebar />
+        <main className="flex-1 ml-64 p-6 overflow-auto">{children}</main>
       </body>
     </html>
   );
