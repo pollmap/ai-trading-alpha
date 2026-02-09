@@ -14,6 +14,13 @@ class Market(str, Enum):
     KRX = "KRX"
     US = "US"
     CRYPTO = "CRYPTO"
+    JPX = "JPX"               # Tokyo Stock Exchange (Japan)
+    SSE = "SSE"               # Shanghai Stock Exchange (China)
+    HKEX = "HKEX"             # Hong Kong Exchange
+    EURONEXT = "EURONEXT"     # Pan-European (Paris, Amsterdam, Brussels, Lisbon)
+    LSE = "LSE"               # London Stock Exchange
+    BOND = "BOND"             # Global bond market
+    COMMODITIES = "COMMODITIES"  # Commodities (gold, oil, etc.)
 
 
 class Action(str, Enum):
@@ -73,6 +80,22 @@ class MacroData:
     kr_cpi_yoy: float | None = None
     us_cpi_yoy: float | None = None
     fear_greed_index: float | None = None
+    # Global macro fields (v4 expansion)
+    jp_base_rate: float | None = None
+    cn_base_rate: float | None = None
+    ecb_rate: float | None = None
+    boe_rate: float | None = None
+    usdjpy: float | None = None
+    usdcny: float | None = None
+    eurusd: float | None = None
+    gbpusd: float | None = None
+    usdhkd: float | None = None
+    gold_price: float | None = None
+    oil_wti_price: float | None = None
+    us_10y_yield: float | None = None
+    jp_10y_yield: float | None = None
+    de_10y_yield: float | None = None
+    cn_10y_yield: float | None = None
 
 
 @dataclass
@@ -137,12 +160,42 @@ class MarketSnapshot:
             macro_items.append(f"KR Base Rate={macro.kr_base_rate:.2f}%")
         if macro.us_fed_rate is not None:
             macro_items.append(f"US Fed Rate={macro.us_fed_rate:.2f}%")
+        if macro.jp_base_rate is not None:
+            macro_items.append(f"JP Base Rate={macro.jp_base_rate:.2f}%")
+        if macro.cn_base_rate is not None:
+            macro_items.append(f"CN Base Rate={macro.cn_base_rate:.2f}%")
+        if macro.ecb_rate is not None:
+            macro_items.append(f"ECB Rate={macro.ecb_rate:.2f}%")
+        if macro.boe_rate is not None:
+            macro_items.append(f"BoE Rate={macro.boe_rate:.2f}%")
         if macro.usdkrw is not None:
             macro_items.append(f"USD/KRW={macro.usdkrw:.1f}")
+        if macro.usdjpy is not None:
+            macro_items.append(f"USD/JPY={macro.usdjpy:.2f}")
+        if macro.usdcny is not None:
+            macro_items.append(f"USD/CNY={macro.usdcny:.4f}")
+        if macro.eurusd is not None:
+            macro_items.append(f"EUR/USD={macro.eurusd:.4f}")
+        if macro.gbpusd is not None:
+            macro_items.append(f"GBP/USD={macro.gbpusd:.4f}")
+        if macro.usdhkd is not None:
+            macro_items.append(f"USD/HKD={macro.usdhkd:.4f}")
         if macro.vix is not None:
             macro_items.append(f"VIX={macro.vix:.1f}")
         if macro.fear_greed_index is not None:
             macro_items.append(f"Fear&Greed={macro.fear_greed_index:.0f}")
+        if macro.gold_price is not None:
+            macro_items.append(f"Gold={macro.gold_price:.2f}")
+        if macro.oil_wti_price is not None:
+            macro_items.append(f"WTI Oil={macro.oil_wti_price:.2f}")
+        if macro.us_10y_yield is not None:
+            macro_items.append(f"US 10Y={macro.us_10y_yield:.3f}%")
+        if macro.jp_10y_yield is not None:
+            macro_items.append(f"JP 10Y={macro.jp_10y_yield:.3f}%")
+        if macro.de_10y_yield is not None:
+            macro_items.append(f"DE 10Y={macro.de_10y_yield:.3f}%")
+        if macro.cn_10y_yield is not None:
+            macro_items.append(f"CN 10Y={macro.cn_10y_yield:.3f}%")
         lines.append(", ".join(macro_items) if macro_items else "No macro data")
 
         # News summary (top 5)

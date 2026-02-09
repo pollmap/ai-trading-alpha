@@ -104,3 +104,182 @@ CRYPTO:
     - "BTCUSDT"
     - "ETHUSDT"
     - "SOLUSDT"
+
+JPX:
+  currency: JPY
+  initial_capital: 10_000_000  # 1000万円
+  cycle_interval_minutes: 30
+  trading_hours:
+    start: "09:00"  # JST
+    end: "15:00"    # JST
+    timezone: "Asia/Tokyo"
+  commission:
+    buy: 0.0003    # 0.03% (typical online broker)
+    sell: 0.0003   # 0.03%
+    tax: 0.0       # No securities transaction tax in Japan
+  slippage: 0.001
+  max_position_weight: 0.30
+  min_cash_ratio: 0.20
+  symbols:
+    - "7203.T"   # Toyota
+    - "6758.T"   # Sony
+    - "9984.T"   # SoftBank Group
+    - "6861.T"   # Keyence
+    - "8306.T"   # MUFG
+    - "6902.T"   # Denso
+    - "6367.T"   # Daikin Industries
+    - "9433.T"   # KDDI
+    - "4063.T"   # Shin-Etsu Chemical
+    - "8035.T"   # Tokyo Electron
+
+SSE:
+  currency: CNY
+  initial_capital: 500_000  # 50万元
+  cycle_interval_minutes: 30
+  trading_hours:
+    start: "09:30"  # CST
+    end: "15:00"    # CST
+    timezone: "Asia/Shanghai"
+  commission:
+    buy: 0.0003    # 0.03% (typical online broker)
+    sell: 0.0003   # 0.03%
+    tax: 0.001     # 0.1% stamp duty on sell
+  slippage: 0.001
+  max_position_weight: 0.30
+  min_cash_ratio: 0.20
+  symbols:
+    - "600519.SS"  # Kweichow Moutai
+    - "601318.SS"  # Ping An Insurance
+    - "600036.SS"  # China Merchants Bank
+    - "000858.SS"  # Wuliangye Yibin
+    - "601899.SS"  # Zijin Mining
+    - "600276.SS"  # Jiangsu Hengrui Medicine
+    - "601012.SS"  # LONGi Green Energy
+    - "600900.SS"  # China Yangtze Power
+    - "600309.SS"  # Wanhua Chemical
+    - "601888.SS"  # China Tourism Group Duty Free
+
+HKEX:
+  currency: HKD
+  initial_capital: 500_000  # HK$50万
+  cycle_interval_minutes: 30
+  trading_hours:
+    start: "09:30"  # HKT
+    end: "16:00"    # HKT
+    timezone: "Asia/Hong_Kong"
+  commission:
+    buy: 0.0005    # 0.05% (typical online broker)
+    sell: 0.0005   # 0.05%
+    tax: 0.0013    # 0.13% stamp duty
+  slippage: 0.001
+  max_position_weight: 0.30
+  min_cash_ratio: 0.20
+  symbols:
+    - "0700.HK"   # Tencent
+    - "9988.HK"   # Alibaba
+    - "0941.HK"   # China Mobile
+    - "1299.HK"   # AIA Group
+    - "2318.HK"   # Ping An Insurance
+    - "0005.HK"   # HSBC Holdings
+    - "9999.HK"   # NetEase
+    - "3690.HK"   # Meituan
+    - "1810.HK"   # Xiaomi
+    - "2020.HK"   # ANTA Sports
+
+EURONEXT:
+  currency: EUR
+  initial_capital: 100_000
+  cycle_interval_minutes: 30
+  trading_hours:
+    start: "09:00"  # CET
+    end: "17:30"    # CET
+    timezone: "Europe/Paris"
+  commission:
+    buy: 0.0005    # 0.05%
+    sell: 0.0005   # 0.05%
+    tax: 0.003     # 0.3% French FTT (on large-cap French stocks)
+  slippage: 0.001
+  max_position_weight: 0.30
+  min_cash_ratio: 0.20
+  symbols:
+    - "MC.PA"     # LVMH (Paris)
+    - "ASML.AS"   # ASML (Amsterdam)
+    - "OR.PA"     # L'Oreal (Paris)
+    - "SAN.PA"    # Sanofi (Paris)
+    - "AIR.PA"    # Airbus (Paris)
+    - "SU.PA"     # Schneider Electric (Paris)
+    - "AI.PA"     # Air Liquide (Paris)
+    - "BNP.PA"    # BNP Paribas (Paris)
+    - "DG.PA"     # Vinci (Paris)
+    - "SAF.PA"    # Safran (Paris)
+
+LSE:
+  currency: GBP
+  initial_capital: 100_000
+  cycle_interval_minutes: 30
+  trading_hours:
+    start: "08:00"  # GMT/BST
+    end: "16:30"    # GMT/BST
+    timezone: "Europe/London"
+  commission:
+    buy: 0.0     # Most UK brokers offer zero commission
+    sell: 0.0
+    tax: 0.005   # 0.5% Stamp Duty Reserve Tax on buy
+  slippage: 0.001
+  max_position_weight: 0.30
+  min_cash_ratio: 0.20
+  symbols:
+    - "SHEL.L"   # Shell
+    - "AZN.L"    # AstraZeneca
+    - "HSBA.L"   # HSBC
+    - "ULVR.L"   # Unilever
+    - "BP.L"     # BP
+    - "GSK.L"    # GSK
+    - "RIO.L"    # Rio Tinto
+    - "LSEG.L"   # London Stock Exchange Group
+    - "REL.L"    # RELX
+    - "DGE.L"    # Diageo
+
+BOND:
+  currency: USD
+  initial_capital: 100_000
+  cycle_interval_minutes: 60
+  trading_hours:
+    start: "09:30"   # EST (ETF trading hours)
+    end: "16:00"     # EST
+    timezone: "America/New_York"
+  commission:
+    buy: 0.0
+    sell: 0.0
+    tax: 0.0
+  slippage: 0.0005   # Tighter spreads for bond ETFs
+  max_position_weight: 0.30
+  min_cash_ratio: 0.20
+  symbols:
+    - "TLT"    # iShares 20+ Year Treasury Bond ETF
+    - "IEF"    # iShares 7-10 Year Treasury Bond ETF
+    - "LQD"    # iShares Investment Grade Corporate Bond ETF
+    - "HYG"    # iShares High Yield Corporate Bond ETF
+    - "EMB"    # iShares JP Morgan USD Emerging Markets Bond ETF
+
+COMMODITIES:
+  currency: USD
+  initial_capital: 100_000
+  cycle_interval_minutes: 30
+  trading_hours:
+    start: "00:00"  # Near 24-hour trading for futures
+    end: "23:59"
+    timezone: "UTC"
+  commission:
+    buy: 0.0005    # 0.05%
+    sell: 0.0005   # 0.05%
+    tax: 0.0
+  slippage: 0.002  # Higher slippage for commodity futures
+  max_position_weight: 0.30
+  min_cash_ratio: 0.20
+  symbols:
+    - "GC=F"   # Gold futures
+    - "CL=F"   # Crude Oil WTI futures
+    - "SI=F"   # Silver futures
+    - "NG=F"   # Natural Gas futures
+    - "HG=F"   # Copper futures
