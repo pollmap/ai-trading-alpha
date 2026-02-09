@@ -6,15 +6,37 @@ import { useState } from "react";
 import { useI18n } from "@/lib/i18n";
 import LanguageToggle from "@/components/LanguageToggle";
 
-type TranslationKey = "overview" | "modelComparison" | "systemStatus" | "riskDashboard" | "regimeAnalysis" | "replayViewer";
+type TranslationKey = "overview" | "modelComparison" | "systemStatus" | "riskDashboard" | "regimeAnalysis" | "replayViewer" | "simulation" | "customStrategy" | "optimizer" | "reports";
 
-const NAV_ITEMS: { href: string; labelKey: TranslationKey; icon: string }[] = [
-  { href: "/", labelKey: "overview", icon: "📊" },
-  { href: "/model-comparison", labelKey: "modelComparison", icon: "🤖" },
-  { href: "/system-status", labelKey: "systemStatus", icon: "⚙️" },
-  { href: "/risk", labelKey: "riskDashboard", icon: "🛡️" },
-  { href: "/regime", labelKey: "regimeAnalysis", icon: "📈" },
-  { href: "/replay", labelKey: "replayViewer", icon: "⏪" },
+interface NavSection {
+  title?: string;
+  items: { href: string; labelKey: TranslationKey; icon: string }[];
+}
+
+const NAV_SECTIONS: NavSection[] = [
+  {
+    items: [
+      { href: "/", labelKey: "overview", icon: "📊" },
+      { href: "/model-comparison", labelKey: "modelComparison", icon: "🤖" },
+      { href: "/risk", labelKey: "riskDashboard", icon: "🛡️" },
+      { href: "/regime", labelKey: "regimeAnalysis", icon: "📈" },
+    ],
+  },
+  {
+    title: "v4",
+    items: [
+      { href: "/simulation", labelKey: "simulation", icon: "🎮" },
+      { href: "/strategy", labelKey: "customStrategy", icon: "🧠" },
+      { href: "/optimizer", labelKey: "optimizer", icon: "⚖️" },
+      { href: "/reports", labelKey: "reports", icon: "📑" },
+    ],
+  },
+  {
+    items: [
+      { href: "/system-status", labelKey: "systemStatus", icon: "⚙️" },
+      { href: "/replay", labelKey: "replayViewer", icon: "⏪" },
+    ],
+  },
 ];
 
 export default function Sidebar() {
@@ -33,25 +55,36 @@ export default function Sidebar() {
       </div>
 
       <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
-        {NAV_ITEMS.map((item) => {
-          const isActive = item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              onClick={() => setMobileOpen(false)}
-              className={`nav-link ${isActive ? "active" : "text-atlas-muted"}`}
-            >
-              <span className="text-lg">{item.icon}</span>
-              <span>{t(item.labelKey)}</span>
-            </Link>
-          );
-        })}
+        {NAV_SECTIONS.map((section, si) => (
+          <div key={si}>
+            {section.title && (
+              <div className="px-3 pt-3 pb-1">
+                <span className="text-[10px] font-bold uppercase tracking-widest text-gray-500">
+                  {section.title}
+                </span>
+              </div>
+            )}
+            {section.items.map((item) => {
+              const isActive = item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  onClick={() => setMobileOpen(false)}
+                  className={`nav-link ${isActive ? "active" : "text-atlas-muted"}`}
+                >
+                  <span className="text-lg">{item.icon}</span>
+                  <span>{t(item.labelKey)}</span>
+                </Link>
+              );
+            })}
+          </div>
+        ))}
       </nav>
 
       <div className="p-4 border-t border-atlas-border">
         <p className="text-xs text-atlas-muted">4 LLMs x 2 Architectures + Buy&Hold</p>
-        <p className="text-xs text-atlas-muted mt-1">Markets: KRX | US | CRYPTO</p>
+        <p className="text-xs text-atlas-muted mt-1">10 Markets | Global Coverage</p>
         <div className="mt-3 flex items-center gap-2">
           <div className="w-2 h-2 rounded-full bg-atlas-green animate-pulse" />
           <span className="text-xs text-atlas-green">{t("systemOnline")}</span>

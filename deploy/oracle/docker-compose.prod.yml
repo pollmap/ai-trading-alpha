@@ -1,0 +1,116 @@
+version: "3.9"
+
+# ATLAS Production Stack — Oracle Cloud ARM A1 (4 OCPU, 24 GB)
+# Deploy with: docker compose -f docker-compose.prod.yml up -d
+
+services:
+  # ── PostgreSQL + TimescaleDB ────────────────────────────────────
+  postgres:
+    image: timescale/timescaledb:latest-pg16
+    container_name: atlas-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: atlas
+      POSTGRES_USER: atlas
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-atlas_secure_2026}
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init-db.sql:/docker-entrypoint-initdb.d/01-init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U atlas"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+          cpus: "1.0"
+
+  # ── Redis (Cache + Pub/Sub) ─────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: atlas-redis
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "0.25"
+
+  # ── ATLAS Backend (Python) ─────────────────────────────────────
+  atlas-backend:
+    build:
+      context: ../..
+      dockerfile: deploy/oracle/Dockerfile
+    container_name: atlas-backend
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://atlas:${POSTGRES_PASSWORD:-atlas_secure_2026}@postgres:5432/atlas
+      REDIS_URL: redis://redis:6379/0
+      ATLAS_API_KEY: ${ATLAS_API_KEY:-}
+      ATLAS_JWT_SECRET: ${ATLAS_JWT_SECRET:-change-me-in-production}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      PYTHONUNBUFFERED: "1"
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - atlas_data:/app/data
+      - atlas_reports:/app/reports
+    deploy:
+      resources:
+        limits:
+          memory: 8G
+          cpus: "2.0"
+
+  # ── Nginx Reverse Proxy + SSL ──────────────────────────────────
+  nginx:
+    image: nginx:alpine
+    container_name: atlas-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - certbot_data:/etc/letsencrypt:ro
+      - certbot_www:/var/www/certbot:ro
+    depends_on:
+      - atlas-backend
+
+  # ── Certbot (Auto-SSL) ────────────────────────────────────────
+  certbot:
+    image: certbot/certbot
+    container_name: atlas-certbot
+    volumes:
+      - certbot_data:/etc/letsencrypt
+      - certbot_www:/var/www/certbot
+    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h & wait $${!}; done;'"
+
+volumes:
+  postgres_data:
+  redis_data:
+  atlas_data:
+  atlas_reports:
+  certbot_data:
+  certbot_www:

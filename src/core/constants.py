@@ -6,11 +6,23 @@ from __future__ import annotations
 MARKET_KRX = "KRX"
 MARKET_US = "US"
 MARKET_CRYPTO = "CRYPTO"
+MARKET_JPX = "JPX"
+MARKET_SSE = "SSE"
+MARKET_HKEX = "HKEX"
+MARKET_EURONEXT = "EURONEXT"
+MARKET_LSE = "LSE"
+MARKET_BOND = "BOND"
+MARKET_COMMODITIES = "COMMODITIES"
 
 # ── Currency Codes ───────────────────────────────────────────────
 CURRENCY_KRW = "KRW"
 CURRENCY_USD = "USD"
 CURRENCY_USDT = "USDT"
+CURRENCY_JPY = "JPY"
+CURRENCY_CNY = "CNY"
+CURRENCY_HKD = "HKD"
+CURRENCY_EUR = "EUR"
+CURRENCY_GBP = "GBP"
 
 # ── Model Provider IDs ───────────────────────────────────────────
 MODEL_DEEPSEEK = "deepseek"
@@ -44,6 +56,13 @@ FORWARD_FILL_MAX_HOURS = 3          # Max stale data age before exclusion
 CACHE_TTL_KRX = 60                  # seconds
 CACHE_TTL_US = 60
 CACHE_TTL_CRYPTO = 10
+CACHE_TTL_JPX = 60
+CACHE_TTL_SSE = 60
+CACHE_TTL_HKEX = 60
+CACHE_TTL_EURONEXT = 60
+CACHE_TTL_LSE = 60
+CACHE_TTL_BOND = 300                # bonds move slower
+CACHE_TTL_COMMODITIES = 30
 
 # ── Event Trigger Defaults ───────────────────────────────────────
 EVENT_PRICE_CHANGE_THRESHOLD = 0.03   # 3%
