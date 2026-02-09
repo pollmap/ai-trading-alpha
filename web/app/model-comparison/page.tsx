@@ -1,9 +1,6 @@
 "use client";
 
 import MetricCard from "@/components/MetricCard";
-import ExportButton from "@/components/ExportButton";
-import { useI18n } from "@/lib/i18n";
-import { ModelBarChart } from "@/components/PlotlyChart";
 
 const COMPARISON_DATA = {
   metrics: [
@@ -19,58 +16,39 @@ const COMPARISON_DATA = {
 };
 
 export default function ModelComparisonPage() {
-  const { t } = useI18n();
-  const metrics = COMPARISON_DATA.metrics;
-
-  const caaData = metrics
-    .map((m) => ({
-      ...m,
-      alpha: m.return - 4.2,
-      totalCost: m.costPerTrade * 45,
-      caa: (m.return - 4.2) / (m.costPerTrade * 45),
-    }))
-    .sort((a, b) => b.caa - a.caa);
-
-  const caaExportData = caaData.map((m, i) => ({
-    rank: i + 1,
-    model: m.model,
-    return_pct: `+${m.return}%`,
-    vs_bh: `+${m.alpha.toFixed(1)}%`,
-    api_cost: `$${m.totalCost.toFixed(2)}`,
-    caa_score: m.caa.toFixed(3),
-  }));
-
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-bold text-white">{t("modelCompTitle")}</h1>
-        <p className="text-atlas-muted mt-1">{t("modelCompDesc")}</p>
+        <h1 className="text-3xl font-bold text-white">Model Comparison</h1>
+        <p className="text-atlas-muted mt-1">
+          Head-to-head performance comparison across all LLM providers
+        </p>
       </div>
 
       {/* Model Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        {metrics.map((m) => (
+        {COMPARISON_DATA.metrics.map((m) => (
           <div key={m.model} className="metric-card space-y-3">
             <h3 className="text-lg font-semibold text-white">{m.model}</h3>
             <div className="space-y-2">
               <div className="flex justify-between text-sm">
-                <span className="text-atlas-muted">{t("avgReturnLabel")}</span>
+                <span className="text-atlas-muted">Avg Return</span>
                 <span className="text-atlas-green">+{m.return}%</span>
               </div>
               <div className="flex justify-between text-sm">
-                <span className="text-atlas-muted">{t("sharpeRatio")}</span>
+                <span className="text-atlas-muted">Sharpe Ratio</span>
                 <span className="text-white">{m.sharpe.toFixed(2)}</span>
               </div>
               <div className="flex justify-between text-sm">
-                <span className="text-atlas-muted">{t("maxDrawdown")}</span>
+                <span className="text-atlas-muted">Max Drawdown</span>
                 <span className="text-atlas-red">-{m.maxDD}%</span>
               </div>
               <div className="flex justify-between text-sm">
-                <span className="text-atlas-muted">{t("winRate")}</span>
+                <span className="text-atlas-muted">Win Rate</span>
                 <span className="text-white">{m.winRate}%</span>
               </div>
               <div className="flex justify-between text-sm">
-                <span className="text-atlas-muted">{t("costPerTrade")}</span>
+                <span className="text-atlas-muted">Cost/Trade</span>
                 <span className="text-atlas-muted">${m.costPerTrade}</span>
               </div>
             </div>
@@ -85,30 +63,24 @@ export default function ModelComparisonPage() {
         ))}
       </div>
 
-      {/* Return Comparison Bar Chart */}
-      <div className="chart-container">
-        <h2 className="text-lg font-semibold text-white mb-2">{t("avgReturnLabel")}</h2>
-        <ModelBarChart models={metrics.map((m) => ({ name: m.model, value: m.return }))} suffix="%" />
-      </div>
-
       {/* Architecture Comparison */}
       <div className="chart-container">
-        <h2 className="text-lg font-semibold text-white mb-4">{t("singleVsMulti")}</h2>
+        <h2 className="text-lg font-semibold text-white mb-4">Single vs Multi-Agent Architecture</h2>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {COMPARISON_DATA.archComparison.map((arch) => (
             <div key={arch.arch} className="bg-atlas-bg rounded-lg p-4 border border-atlas-border">
               <h3 className="text-md font-medium text-white mb-3">{arch.arch}</h3>
               <div className="space-y-2">
                 <div className="flex justify-between">
-                  <span className="text-atlas-muted">{t("avgReturnLabel")}</span>
+                  <span className="text-atlas-muted">Avg Return</span>
                   <span className="text-atlas-green">+{arch.avgReturn}%</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-atlas-muted">{t("sharpeRatio")}</span>
+                  <span className="text-atlas-muted">Avg Sharpe</span>
                   <span className="text-white">{arch.avgSharpe.toFixed(2)}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-atlas-muted">{t("avgApiCost")}</span>
+                  <span className="text-atlas-muted">Avg API Cost</span>
                   <span className="text-atlas-muted">${arch.avgCost.toFixed(2)}</span>
                 </div>
               </div>
@@ -119,32 +91,37 @@ export default function ModelComparisonPage() {
 
       {/* Detailed Comparison Table */}
       <div className="chart-container">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-semibold text-white">{t("caaRanking")}</h2>
-          <ExportButton data={caaExportData} filename="atlas-caa-ranking" />
-        </div>
+        <h2 className="text-lg font-semibold text-white mb-4">Cost-Adjusted Alpha (CAA) Ranking</h2>
         <table className="data-table">
           <thead>
             <tr>
-              <th>{t("rank")}</th>
-              <th>{t("model")}</th>
-              <th>{t("returnPct")}</th>
-              <th>{t("vsBH")}</th>
-              <th>{t("apiCost")}</th>
-              <th>{t("caaScore")}</th>
+              <th>Rank</th>
+              <th>Model</th>
+              <th>Return (%)</th>
+              <th>vs B&H (%)</th>
+              <th>API Cost ($)</th>
+              <th>CAA Score</th>
             </tr>
           </thead>
           <tbody>
-            {caaData.map((m, i) => (
-              <tr key={m.model} className="hover:bg-atlas-border/30">
-                <td className="font-bold text-atlas-accent">#{i + 1}</td>
-                <td className="font-medium text-white">{m.model}</td>
-                <td className="text-atlas-green">+{m.return}%</td>
-                <td className="text-atlas-green">+{m.alpha.toFixed(1)}%</td>
-                <td>${m.totalCost.toFixed(2)}</td>
-                <td className="font-bold text-white">{m.caa.toFixed(3)}</td>
-              </tr>
-            ))}
+            {COMPARISON_DATA.metrics
+              .map((m) => ({
+                ...m,
+                alpha: m.return - 4.2,
+                totalCost: m.costPerTrade * 45,
+                caa: (m.return - 4.2) / (m.costPerTrade * 45),
+              }))
+              .sort((a, b) => b.caa - a.caa)
+              .map((m, i) => (
+                <tr key={m.model} className="hover:bg-atlas-border/30">
+                  <td className="font-bold text-atlas-accent">#{i + 1}</td>
+                  <td className="font-medium text-white">{m.model}</td>
+                  <td className="text-atlas-green">+{m.return}%</td>
+                  <td className="text-atlas-green">+{m.alpha.toFixed(1)}%</td>
+                  <td>${m.totalCost.toFixed(2)}</td>
+                  <td className="font-bold text-white">{m.caa.toFixed(3)}</td>
+                </tr>
+              ))}
           </tbody>
         </table>
       </div>
