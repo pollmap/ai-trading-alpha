@@ -6,7 +6,6 @@ import asyncio
 from pathlib import Path
 
 import yaml
-import yfinance as yf
 
 from config.settings import Settings, get_settings
 from src.core.constants import LLM_MAX_RETRIES
@@ -48,6 +47,8 @@ def _fetch_yfinance_batch(symbols: list[str]) -> dict[str, SymbolData]:
     Downloads the latest 1-day OHLCV bar for every symbol in a single batch
     request. Symbols that fail individually are logged and skipped.
     """
+    import yfinance as yf
+
     joined = " ".join(symbols)
     tickers = yf.Tickers(joined)
     result: dict[str, SymbolData] = {}

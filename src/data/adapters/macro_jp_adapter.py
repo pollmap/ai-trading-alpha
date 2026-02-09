@@ -5,9 +5,6 @@ from __future__ import annotations
 import asyncio
 from datetime import datetime, timedelta, timezone
 
-import yfinance as yf
-from fredapi import Fred
-
 from config.settings import Settings, get_settings
 from src.core.constants import LLM_MAX_RETRIES
 from src.core.exceptions import DataFetchError, RateLimitError
@@ -46,6 +43,7 @@ class MacroJPAdapter:
         if not api_key:
             msg = "fred_api_key is not configured in settings / .env"
             raise DataFetchError(msg)
+        from fredapi import Fred
         self._fred: Fred = Fred(api_key=api_key)
         self._max_retries: int = LLM_MAX_RETRIES
         log.info("macro_jp_adapter_initialized")
@@ -84,6 +82,7 @@ class MacroJPAdapter:
     def _fetch_usdjpy_sync(self) -> float | None:
         """Fetch the latest USD/JPY exchange rate via yfinance."""
         try:
+            import yfinance as yf
             ticker = yf.Ticker(_USDJPY_TICKER)
             hist = ticker.history(period="1d")
             if hist.empty:
