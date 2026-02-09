@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import Sidebar from "@/components/Sidebar";
+import Providers from "@/components/Providers";
 
 export const metadata: Metadata = {
   title: "ATLAS Dashboard",
@@ -22,10 +23,12 @@ export default function RootLayout({
   return (
     <html lang="ko" className="dark">
       <body className="flex min-h-screen">
-        <Sidebar />
-        <main className="flex-1 lg:ml-64 p-4 pt-16 lg:pt-6 lg:p-6 overflow-auto">
-          {children}
-        </main>
+        <Providers>
+          <Sidebar />
+          <main className="flex-1 lg:ml-64 p-4 pt-16 lg:pt-6 lg:p-6 overflow-auto">
+            {children}
+          </main>
+        </Providers>
       </body>
     </html>
   );

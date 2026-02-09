@@ -1,7 +1,9 @@
 "use client";
 
 import MetricCard from "@/components/MetricCard";
-import { useAPI } from "@/lib/useAPI";
+import ExportButton from "@/components/ExportButton";
+import { useAutoRefresh } from "@/lib/useAutoRefresh";
+import { useI18n } from "@/lib/i18n";
 import type { PortfoliosResponse } from "@/lib/api";
 
 const FALLBACK: PortfoliosResponse = {
@@ -28,49 +30,68 @@ const ARCH_NAMES: Record<string, string> = { single: "Single", multi: "Multi", b
 const BH_RETURN = 4.2;
 
 export default function OverviewPage() {
-  const { data, loading } = useAPI<PortfoliosResponse>("/api/portfolios", FALLBACK);
+  const { t } = useI18n();
+  const { data, loading, lastUpdated, refreshing, refresh } = useAutoRefresh<PortfoliosResponse>({
+    path: "/api/portfolios",
+    fallback: FALLBACK,
+  });
   const portfolios = data.portfolios;
 
   const bestReturn = portfolios.reduce((a, b) => a.return_pct > b.return_pct ? a : b);
   const avgReturn = portfolios.reduce((sum, d) => sum + d.return_pct, 0) / portfolios.length;
   const totalCost = portfolios.reduce((sum, d) => sum + d.api_cost, 0);
 
+  const exportData = portfolios.map((p) => ({
+    model: MODEL_NAMES[p.model] || p.model,
+    architecture: ARCH_NAMES[p.architecture] || p.architecture,
+    return_pct: p.return_pct,
+    sharpe_ratio: p.sharpe_ratio,
+    max_drawdown: p.max_drawdown,
+    total_trades: p.total_trades,
+    api_cost: p.api_cost,
+    caa: p.api_cost > 0 ? Number(((p.return_pct - BH_RETURN) / p.api_cost).toFixed(3)) : 0,
+  }));
+
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl sm:text-3xl font-bold text-white">Overview</h1>
-        <p className="text-atlas-muted mt-1 text-sm sm:text-base">
-          AI Trading Benchmark -- 4 LLMs x 2 Architectures across 3 Markets
-        </p>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+        <div>
+          <h1 className="text-2xl sm:text-3xl font-bold text-white">{t("overviewTitle")}</h1>
+          <p className="text-atlas-muted mt-1 text-sm">{t("overviewDesc")}</p>
+        </div>
+        <div className="flex items-center gap-3">
+          {lastUpdated && (
+            <span className="text-xs text-atlas-muted">
+              {refreshing ? t("refreshing") : `${t("lastUpdated")}: ${lastUpdated.toLocaleTimeString()}`}
+            </span>
+          )}
+          <button onClick={refresh} className="px-3 py-1.5 text-xs bg-atlas-accent/20 text-atlas-accent rounded-lg hover:bg-atlas-accent/30 transition-colors">
+            {t("autoRefresh")}
+          </button>
+        </div>
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-        <MetricCard
-          label="Best Performer"
-          value={`${MODEL_NAMES[bestReturn.model] || bestReturn.model} / ${ARCH_NAMES[bestReturn.architecture] || bestReturn.architecture}`}
-          delta={`+${bestReturn.return_pct}%`}
-          deltaType="positive"
-        />
-        <MetricCard label="Average Return" value={`${avgReturn.toFixed(1)}%`} delta="All portfolios" />
-        <MetricCard label="Total API Cost" value={`$${totalCost.toFixed(2)}`} delta="Across all models" />
-        <MetricCard label="Active Portfolios" value="27" delta="9 per market x 3" />
+        <MetricCard label={t("bestPerformer")} value={`${MODEL_NAMES[bestReturn.model] || bestReturn.model} / ${ARCH_NAMES[bestReturn.architecture] || bestReturn.architecture}`} delta={`+${bestReturn.return_pct}%`} deltaType="positive" />
+        <MetricCard label={t("avgReturn")} value={`${avgReturn.toFixed(1)}%`} delta={t("allPortfolios")} />
+        <MetricCard label={t("totalApiCost")} value={`$${totalCost.toFixed(2)}`} delta={t("acrossModels")} />
+        <MetricCard label={t("activePortfolios")} value="27" delta={t("perMarket")} />
       </div>
 
       <div className="chart-container">
-        <h2 className="text-lg font-semibold text-white mb-4">Portfolio Performance Summary</h2>
-        {loading && <p className="text-atlas-muted text-sm animate-pulse">Loading from API...</p>}
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-lg font-semibold text-white">{t("perfSummary")}</h2>
+          <ExportButton data={exportData} filename="atlas-portfolios" />
+        </div>
+        {loading && <p className="text-atlas-muted text-sm animate-pulse">{t("loadingApi")}</p>}
         <div className="overflow-x-auto">
           <table className="data-table">
             <thead>
               <tr>
-                <th>Model</th>
-                <th>Arch</th>
-                <th>Return</th>
-                <th>Sharpe</th>
-                <th>Max DD</th>
-                <th className="hidden sm:table-cell">Trades</th>
-                <th className="hidden sm:table-cell">Cost</th>
-                <th>CAA</th>
+                <th>{t("model")}</th><th>{t("arch")}</th><th>{t("returnPct")}</th>
+                <th>{t("sharpe")}</th><th>{t("maxDD")}</th>
+                <th className="hidden sm:table-cell">{t("trades")}</th>
+                <th className="hidden sm:table-cell">{t("cost")}</th><th>{t("caa")}</th>
               </tr>
             </thead>
             <tbody>
@@ -109,9 +130,7 @@ export default function OverviewPage() {
                 m.status === "Active" ? "bg-green-900/30 text-green-400" :
                 m.status === "Pre-Market" ? "bg-yellow-900/30 text-yellow-400" :
                 "bg-gray-900/30 text-gray-400"
-              }`}>
-                {m.status}
-              </span>
+              }`}>{m.status}</span>
             </div>
             <p className="text-sm text-atlas-muted mt-2">Hours: {m.time}</p>
             <p className="text-sm text-atlas-muted">Symbols: {m.symbols}</p>

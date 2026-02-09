@@ -1,6 +1,8 @@
 "use client";
 
 import MetricCard from "@/components/MetricCard";
+import ExportButton from "@/components/ExportButton";
+import { useI18n } from "@/lib/i18n";
 
 const API_STATUS = [
   { provider: "DeepSeek R1", status: "Online", latency: "1.2s", calls: 1247, cost: "$12.50", errors: 3 },
@@ -17,33 +19,47 @@ const SERVICES = [
 ];
 
 export default function SystemStatusPage() {
+  const { t } = useI18n();
+
+  const providerExportData = API_STATUS.map((api) => ({
+    provider: api.provider,
+    status: api.status,
+    avg_latency: api.latency,
+    api_calls: api.calls,
+    cost: api.cost,
+    errors: api.errors,
+  }));
+
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-bold text-white">System Status</h1>
-        <p className="text-atlas-muted mt-1">Infrastructure monitoring and API health</p>
+        <h1 className="text-3xl font-bold text-white">{t("sysStatusTitle")}</h1>
+        <p className="text-atlas-muted mt-1">{t("sysStatusDesc")}</p>
       </div>
 
       {/* Top Metrics */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <MetricCard label="Total API Calls" value="5,204" delta="Last 24h" />
-        <MetricCard label="Total Cost" value="$42.80" delta="Last 24h" />
-        <MetricCard label="Avg Latency" value="1.02s" delta="-0.1s" deltaType="positive" />
-        <MetricCard label="Error Rate" value="0.21%" delta="11 / 5,204" deltaType="negative" />
+        <MetricCard label={t("totalApiCalls")} value="5,204" delta={t("last24h")} />
+        <MetricCard label={t("totalApiCost")} value="$42.80" delta={t("last24h")} />
+        <MetricCard label={t("avgLatency")} value="1.02s" delta="-0.1s" deltaType="positive" />
+        <MetricCard label={t("errorRate")} value="0.21%" delta="11 / 5,204" deltaType="negative" />
       </div>
 
       {/* LLM Provider Status */}
       <div className="chart-container">
-        <h2 className="text-lg font-semibold text-white mb-4">LLM Provider Status</h2>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-lg font-semibold text-white">{t("llmProviderStatus")}</h2>
+          <ExportButton data={providerExportData} filename="atlas-llm-provider-status" />
+        </div>
         <table className="data-table">
           <thead>
             <tr>
-              <th>Provider</th>
-              <th>Status</th>
-              <th>Avg Latency</th>
-              <th>API Calls</th>
-              <th>Cost</th>
-              <th>Errors</th>
+              <th>{t("provider")}</th>
+              <th>{t("status")}</th>
+              <th>{t("latency")}</th>
+              <th>{t("apiCalls")}</th>
+              <th>{t("cost")}</th>
+              <th>{t("errors")}</th>
             </tr>
           </thead>
           <tbody>
@@ -67,7 +83,7 @@ export default function SystemStatusPage() {
 
       {/* Infrastructure */}
       <div className="chart-container">
-        <h2 className="text-lg font-semibold text-white mb-4">Infrastructure</h2>
+        <h2 className="text-lg font-semibold text-white mb-4">{t("infrastructure")}</h2>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {SERVICES.map((svc) => (
             <div key={svc.name} className="bg-atlas-bg rounded-lg p-4 border border-atlas-border flex items-center justify-between">
@@ -94,7 +110,7 @@ export default function SystemStatusPage() {
 
       {/* Recent Errors */}
       <div className="chart-container">
-        <h2 className="text-lg font-semibold text-white mb-4">Recent Errors (Last 24h)</h2>
+        <h2 className="text-lg font-semibold text-white mb-4">{t("recentErrors")}</h2>
         <div className="space-y-2">
           {[
             { time: "14:32 UTC", provider: "Claude", error: "Rate limit exceeded", resolution: "Auto-retry after 60s" },
