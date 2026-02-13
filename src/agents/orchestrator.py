@@ -23,6 +23,9 @@ from src.simulator.portfolio import PortfolioManager
 
 log = get_logger(__name__)
 
+# Protocol-compatible type: any object with async run(snapshot, portfolio) -> TradingSignal
+AgentLike = SingleAgent  # SingleAgent and MultiAgentPipeline share the same run() signature
+
 # All model-architecture combinations
 AGENT_MATRIX: list[tuple[ModelProvider, AgentArchitecture]] = [
     (ModelProvider.DEEPSEEK, AgentArchitecture.SINGLE),
@@ -60,14 +63,15 @@ class BenchmarkOrchestrator:
         self._portfolio_manager = portfolio_manager
         self._single_timeout = single_timeout
         self._multi_timeout = multi_timeout
-        self._agents: dict[tuple[str, str], SingleAgent] = {}
+        # Agents: either SingleAgent or MultiAgentPipeline (both have async run())
+        self._agents: dict[tuple[str, str], object] = {}
         self._cycle_count = 0
 
     def register_agent(
         self,
         model: ModelProvider,
         architecture: AgentArchitecture,
-        agent: SingleAgent,
+        agent: object,
     ) -> None:
         """Register an agent for a model-architecture combination."""
         key = (model.value, architecture.value)
@@ -180,7 +184,7 @@ class BenchmarkOrchestrator:
 
     async def _run_agent_safe(
         self,
-        agent: SingleAgent,
+        agent: object,
         snapshot: MarketSnapshot,
         portfolio: PortfolioState,
         model: ModelProvider,

@@ -30,6 +30,7 @@ from src.analytics.results_store import ResultsStore
 from src.data.collector import DataCollector
 from src.llm.call_logger import LLMCallLogger
 from src.llm.cost_tracker import CostTracker
+from src.simulator.baselines import BuyAndHoldBaseline
 from src.simulator.order_engine import OrderEngine
 from src.simulator.pnl_calculator import PnLCalculator
 from src.simulator.portfolio import PortfolioManager
@@ -111,11 +112,15 @@ class BenchmarkRunner:
             portfolio_manager=self._portfolio_manager,
         )
 
+        # Buy & Hold baseline per market
+        self._baselines: dict[Market, BuyAndHoldBaseline] = {}
+
     async def initialize(self) -> None:
         """Initialize all portfolios and register agents."""
         for market in self._markets:
             capital = INITIAL_CAPITALS.get(market, 100_000)
             self._portfolio_manager.init_portfolios(market, capital)
+            self._baselines[market] = BuyAndHoldBaseline()
             log.info(
                 "market_initialized",
                 market=market.value,
@@ -149,7 +154,8 @@ class BenchmarkRunner:
         """Attempt to register all agent combinations.
 
         Agents with missing API keys are skipped with a warning.
-        For each available model, register both SINGLE and MULTI agents.
+        For SINGLE architecture: uses SingleAgent.
+        For MULTI architecture: uses MultiAgentPipeline (5-stage).
         """
         from config.settings import get_settings
         settings = get_settings()
@@ -179,7 +185,17 @@ class BenchmarkRunner:
                         cost_tracker=self._cost_tracker,
                         call_logger=self._call_logger,
                     )
-                    agent = SingleAgent(llm_adapter=adapter)
+
+                    if arch == AgentArchitecture.MULTI:
+                        # Use MultiAgentPipeline for MULTI architecture
+                        from src.agents.multi_agent.graph import MultiAgentPipeline
+                        agent: object = MultiAgentPipeline(
+                            llm_adapter=adapter,
+                            model_provider=model,
+                        )
+                    else:
+                        agent = SingleAgent(llm_adapter=adapter)
+
                     self._orchestrator.register_agent(
                         model=model,
                         architecture=arch,
@@ -235,7 +251,8 @@ class BenchmarkRunner:
     async def _run_cycle(self) -> None:
         """Execute a single benchmark cycle.
 
-        Pipeline: collect data -> run agents -> execute trades -> update PnL -> save results
+        Pipeline: collect data -> run agents -> execute baselines ->
+                  execute trades -> update PnL -> save results
         """
         cycle_start = datetime.now(timezone.utc)
         cycle_num = self._cycle_count + 1
@@ -255,10 +272,72 @@ class BenchmarkRunner:
             symbols={m.value: len(s.symbols) for m, s in snapshots.items()},
         )
 
-        # 2. Run all agents via orchestrator
+        # 2. Run all LLM agents via orchestrator
         all_signals = await self._orchestrator.run_cycle(snapshots)
 
-        # 3. Execute trades for each signal + save signals
+        # 3. Run Buy & Hold baseline for each market (execute separately)
+        for market, snapshot in snapshots.items():
+            baseline = self._baselines.get(market)
+            if baseline is None:
+                continue
+            try:
+                bh_portfolio = self._portfolio_manager.get_buy_hold_state(market)
+                bh_signals = baseline.generate_signals(snapshot, bh_portfolio)
+
+                for sig in bh_signals:
+                    self._results_store.save_signal(sig, cycle=cycle_num)
+
+                    symbol_data = snapshot.symbols.get(sig.symbol)
+                    if symbol_data is None or sig.action == Action.HOLD:
+                        continue
+
+                    market_cfg = self._market_configs.get(market.value, {})
+                    trade = self._order_engine.execute_signal(
+                        signal=sig,
+                        portfolio=bh_portfolio,
+                        market_config=market_cfg,
+                        close_price=symbol_data.close,
+                    )
+
+                    if trade is not None:
+                        qty_delta = trade.quantity if trade.action == Action.BUY else -trade.quantity
+                        self._portfolio_manager.update_position(
+                            bh_portfolio.portfolio_id,
+                            trade.symbol,
+                            qty_delta,
+                            trade.price,
+                            trade.commission,
+                        )
+                        # Refresh portfolio state after each trade
+                        bh_portfolio = self._portfolio_manager.get_buy_hold_state(market)
+                        trade_count += 1
+
+                        self._results_store.save_trade(
+                            trade_id=trade.trade_id,
+                            signal_id=trade.signal_id,
+                            symbol=trade.symbol,
+                            action=trade.action.value,
+                            quantity=trade.quantity,
+                            price=trade.price,
+                            commission=trade.commission,
+                            realized_pnl=trade.realized_pnl,
+                            cycle=cycle_num,
+                        )
+
+                log.info(
+                    "baseline_signals_generated",
+                    market=market.value,
+                    n_signals=len(bh_signals),
+                    cycle=cycle_num,
+                )
+            except Exception as exc:
+                log.error(
+                    "baseline_execution_failed",
+                    market=market.value,
+                    error=str(exc),
+                )
+
+        # 4. Execute trades for each LLM signal + save signals
         trade_count = 0
         for market_key, signals in all_signals.items():
             market = Market(market_key)
@@ -319,7 +398,7 @@ class BenchmarkRunner:
                         error=str(exc),
                     )
 
-        # 4. Update PnL mark-to-market for all portfolios
+        # 5. Update PnL mark-to-market for all portfolios
         for market in self._markets:
             snapshot = snapshots.get(market)
             if snapshot is None:
@@ -330,10 +409,9 @@ class BenchmarkRunner:
             for portfolio in self._portfolio_manager.snapshot_all():
                 if portfolio.market == market:
                     updated = PnLCalculator.update_portfolio_values(portfolio, current_prices)
-                    # Store updated portfolio back into the manager
-                    self._portfolio_manager._portfolios[portfolio.portfolio_id] = updated
+                    self._portfolio_manager.set_state(portfolio.portfolio_id, updated)
 
-        # 5. Save portfolio snapshots + cost records
+        # 6. Save portfolio snapshots + cost records
         for portfolio in self._portfolio_manager.snapshot_all():
             self._results_store.save_portfolio_snapshot(portfolio, cycle=cycle_num)
 
@@ -351,7 +429,7 @@ class BenchmarkRunner:
                 cycle=cycle_num,
             )
 
-        # 6. Update status
+        # 7. Update status
         self._results_store.update_status(
             running=self._running,
             cycle_count=cycle_num,
