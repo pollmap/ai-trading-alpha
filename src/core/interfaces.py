@@ -25,6 +25,23 @@ class BaseLLMAdapter(ABC):
         """Generate a trading signal from market data and portfolio state."""
         ...
 
+    async def call_with_prompt(
+        self,
+        system_prompt: str,
+        user_prompt: str,
+        snapshot: MarketSnapshot,
+        portfolio: PortfolioState,
+    ) -> TradingSignal:
+        """Generate a signal using custom system/user prompts.
+
+        Used by the multi-agent pipeline so each role (analyst, trader,
+        risk manager, fund manager) can inject its own prompt while
+        reusing the adapter's retry, timeout, and cost-tracking logic.
+
+        Default implementation falls back to ``generate_signal()``.
+        """
+        return await self.generate_signal(snapshot, portfolio)
+
 
 class BaseMarketDataAdapter(ABC):
     """Interface for all market data source adapters."""
