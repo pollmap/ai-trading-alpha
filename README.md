@@ -86,7 +86,7 @@ streamlit run src/dashboard/app.py
 | Command | Description |
 |---------|-------------|
 | `make install` | Install dependencies |
-| `make test` | Run all pytest (266 unit + integration) |
+| `make test` | Run all pytest (290 tests: unit + integration) |
 | `make test-unit` | Unit tests only |
 | `make run` | Start benchmark (`CRYPTO`, unlimited cycles) |
 | `make dashboard` | Launch Streamlit dashboard |
@@ -119,7 +119,7 @@ python scripts/run_benchmark.py --market KRX US CRYPTO JPX SSE HKEX EURONEXT LSE
 | Architecture | Pipeline | LLM Calls/Cycle |
 |---|---|---|
 | **Single** | `snapshot → LLM → signal` | 1 |
-| **Multi** | `4 Analysts → Bull/Bear Debate → Trader → Risk Manager → Fund Manager` | 8+ |
+| **Multi** | `4 Analysts → Bull/Bear Debate → Trader → Risk Mgr → Fund Mgr` (each with role-specific prompt) | 8+ |
 
 **+ Buy & Hold Baseline** — equal-weight initial buy, then hold forever.
 
@@ -177,8 +177,8 @@ ai-trading-alpha/
 ├── web/                     # Next.js 14 marketing site (10 pages)
 ├── deploy/oracle/           # Docker, nginx, SSL, DB schema
 ├── tests/
-│   ├── unit/                # 266 unit tests
-│   └── integration/         # E2E mock-LLM pipeline test
+│   ├── unit/                # 277 unit tests (types, metrics, simulator, LLM base)
+│   └── integration/         # 13 integration tests (E2E pipeline, multi-agent routing)
 └── data/results/            # JSONL output (equity curves, signals, trades, costs)
 ```
 
@@ -193,22 +193,27 @@ ai-trading-alpha/
 
 ## Multi-Agent Pipeline (5 Stages)
 
+Each stage calls the LLM via `call_with_prompt()` with role-specific system prompts
+from `src/llm/prompt_templates/`. This ensures every agent receives specialized instructions
+rather than a generic default prompt.
+
 ```
-Stage 1: 4 Analysts (parallel)
-  ├── Fundamental Analyst
-  ├── Technical Analyst
-  ├── Sentiment Analyst
-  └── News Analyst
-          │
+Stage 1: 4 Analysts (parallel) — each with specialized system prompt
+  ├── Fundamental Analyst  → build_fundamental_prompt(market)
+  ├── Technical Analyst    → build_technical_prompt(market)
+  ├── Sentiment Analyst    → build_sentiment_prompt(market)
+  └── News Analyst         → build_news_prompt(market)
+          │ analyst reports passed as context ▼
 Stage 2: Bull/Bear Debate (2 rounds)
-  ├── Bull Researcher → arguments FOR buying
-  └── Bear Researcher → arguments AGAINST
-          │
-Stage 3: Trader → synthesizes debate into trade proposal
-          │
-Stage 4: Risk Manager → APPROVE or VETO (max 2 retries)
-          │
-Stage 5: Fund Manager → final signal with position sizing
+  ├── Bull Researcher → build_bull_prompt()    — arguments FOR buying
+  ├── Bear Researcher → build_bear_prompt()    — arguments AGAINST
+  └── Rebuttals       → build_debate_rebuttal_prompt(side)
+          │ debate log passed as context ▼
+Stage 3: Trader → build_trader_prompt() — synthesizes into trade proposal
+          │ trade proposal passed as context ▼
+Stage 4: Risk Manager → build_risk_manager_prompt() — APPROVE or VETO
+          │ risk assessment passed as context ▼
+Stage 5: Fund Manager → build_fund_manager_prompt() — final signal + sizing
 ```
 
 ## Dashboard Pages (Streamlit)
@@ -227,19 +232,30 @@ Stage 5: Fund Manager → final signal with position sizing
 
 ## Testing
 
+**290 tests** — no API keys required, all mocked.
+
 ```bash
-# All tests
+# All tests (290 passed)
 pytest tests/ -v
 
-# Unit tests only
+# Unit tests only (277 tests)
 pytest tests/unit/ -v
 
-# Integration test (mock LLM, no API keys needed)
+# Integration tests — E2E pipeline + multi-agent prompt routing (13 tests)
 pytest tests/integration/ -v
 
 # Specific module
 pytest tests/unit/test_order_engine.py -v
 ```
+
+| Test Suite | Count | Covers |
+|---|---|---|
+| Core types & interfaces | 67 | Types, enums, constants, portfolio state |
+| Analytics & metrics | 104 | Metrics, walk-forward, attribution, calibration |
+| Simulator | 95 | OrderEngine, PnL, baselines, risk engine, optimizer |
+| LLM adapter base | 11 | Retry, timeout, cost tracking, `call_with_prompt()` |
+| E2E pipeline | 7 | Full orchestrator loop with mock LLM |
+| Multi-agent routing | 6 | Prompt routing to all 5 pipeline stages |
 
 ## License
 
