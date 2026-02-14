@@ -19,8 +19,12 @@ from src.core.types import (
 from src.agents.single_agent import SingleAgent
 from src.llm.call_logger import LLMCallLogger
 from src.llm.cost_tracker import CostTracker
+from src.simulator.portfolio import PortfolioManager
 
 log = get_logger(__name__)
+
+# Protocol-compatible type: any object with async run(snapshot, portfolio) -> TradingSignal
+AgentLike = SingleAgent  # SingleAgent and MultiAgentPipeline share the same run() signature
 
 # All model-architecture combinations
 AGENT_MATRIX: list[tuple[ModelProvider, AgentArchitecture]] = [
@@ -50,21 +54,24 @@ class BenchmarkOrchestrator:
         self,
         cost_tracker: CostTracker,
         call_logger: LLMCallLogger,
+        portfolio_manager: PortfolioManager | None = None,
         single_timeout: int = 30,
         multi_timeout: int = 120,
     ) -> None:
         self._cost_tracker = cost_tracker
         self._call_logger = call_logger
+        self._portfolio_manager = portfolio_manager
         self._single_timeout = single_timeout
         self._multi_timeout = multi_timeout
-        self._agents: dict[tuple[str, str], SingleAgent] = {}
+        # Agents: either SingleAgent or MultiAgentPipeline (both have async run())
+        self._agents: dict[tuple[str, str], object] = {}
         self._cycle_count = 0
 
     def register_agent(
         self,
         model: ModelProvider,
         architecture: AgentArchitecture,
-        agent: SingleAgent,
+        agent: object,
     ) -> None:
         """Register an agent for a model-architecture combination."""
         key = (model.value, architecture.value)
@@ -121,16 +128,8 @@ class BenchmarkOrchestrator:
                 log.debug("agent_not_registered", model=model.value, architecture=arch.value)
                 continue
 
-            # Create a dummy portfolio for now — in production this comes from PortfolioManager
-            portfolio = PortfolioState(
-                portfolio_id=f"{model.value}_{arch.value}_{market.value}",
-                model=model,
-                architecture=arch,
-                market=market,
-                cash=100_000.0,
-                positions={},
-                initial_capital=100_000.0,
-            )
+            # Get real portfolio from PortfolioManager if available
+            portfolio = self._get_portfolio(model, arch, market)
 
             timeout = (
                 self._single_timeout
@@ -155,9 +154,37 @@ class BenchmarkOrchestrator:
 
         return signals
 
+    def _get_portfolio(
+        self,
+        model: ModelProvider,
+        arch: AgentArchitecture,
+        market: Market,
+    ) -> PortfolioState:
+        """Get portfolio from PortfolioManager, falling back to empty state."""
+        if self._portfolio_manager is not None:
+            try:
+                return self._portfolio_manager.get_state(model, arch, market)
+            except KeyError:
+                log.debug(
+                    "portfolio_not_found_using_default",
+                    model=model.value,
+                    architecture=arch.value,
+                    market=market.value,
+                )
+
+        return PortfolioState(
+            portfolio_id=f"{model.value}_{arch.value}_{market.value}",
+            model=model,
+            architecture=arch,
+            market=market,
+            cash=100_000.0,
+            positions={},
+            initial_capital=100_000.0,
+        )
+
     async def _run_agent_safe(
         self,
-        agent: SingleAgent,
+        agent: object,
         snapshot: MarketSnapshot,
         portfolio: PortfolioState,
         model: ModelProvider,

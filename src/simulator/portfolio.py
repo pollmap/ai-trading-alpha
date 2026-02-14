@@ -318,6 +318,20 @@ class PortfolioManager:
 
     # ── Snapshots ───────────────────────────────────────────────
 
+    def set_state(self, portfolio_id: str, new_state: PortfolioState) -> None:
+        """Replace a portfolio's state with a new snapshot.
+
+        Used by the PnL mark-to-market step to store updated valuations
+        without breaking encapsulation.
+
+        Raises:
+            KeyError: If *portfolio_id* is not tracked.
+        """
+        if portfolio_id not in self._portfolios:
+            msg = f"Unknown portfolio_id: {portfolio_id}"
+            raise KeyError(msg)
+        self._portfolios[portfolio_id] = new_state
+
     def snapshot_all(self) -> list[PortfolioState]:
         """Return a list of every tracked portfolio state.
 

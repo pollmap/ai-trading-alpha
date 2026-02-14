@@ -182,6 +182,65 @@ class BaseLLMAdapterImpl(BaseLLMAdapter):
 
                 return signal
 
+    async def call_with_prompt(
+        self,
+        system_prompt: str,
+        user_prompt: str,
+        snapshot: MarketSnapshot,
+        portfolio: PortfolioState,
+    ) -> TradingSignal:
+        """Call the LLM with explicit system/user prompts.
+
+        Reuses the same retry, timeout, cost-tracking, and parsing logic
+        as ``generate_signal()``, but allows the multi-agent pipeline to
+        supply role-specific prompts (analyst, trader, risk manager, etc.).
+        """
+        full_prompt = f"[SYSTEM]\n{system_prompt}\n\n[USER]\n{user_prompt}"
+        last_error: Exception | None = None
+        symbol = next(iter(snapshot.symbols), "UNKNOWN")
+
+        for attempt in range(1, self._max_retries + 1):
+            try:
+                signal = await self._attempt_call(
+                    system_prompt=system_prompt,
+                    user_prompt=user_prompt,
+                    full_prompt=full_prompt,
+                    snapshot=snapshot,
+                    portfolio=portfolio,
+                    symbol=symbol,
+                    attempt=attempt,
+                )
+                return signal
+            except asyncio.TimeoutError:
+                last_error = LLMTimeoutError(
+                    f"Timeout after {self._timeout}s",
+                    context={"model": self._model_provider.value, "attempt": attempt},
+                )
+                log.warning(
+                    "llm_timeout",
+                    model=self._model_provider.value,
+                    attempt=attempt,
+                    timeout=self._timeout,
+                )
+            except Exception as exc:
+                last_error = exc
+                log.warning(
+                    "llm_call_failed",
+                    model=self._model_provider.value,
+                    attempt=attempt,
+                    error=str(exc),
+                )
+            if attempt < self._max_retries:
+                wait = 2 ** attempt
+                await asyncio.sleep(wait)
+
+        log.error(
+            "llm_all_retries_exhausted",
+            model=self._model_provider.value,
+            error=str(last_error),
+        )
+        return self._fallback_hold(snapshot, symbol)
+
     def _fallback_hold(
         self, snapshot: MarketSnapshot, symbol: str,
     ) -> TradingSignal:

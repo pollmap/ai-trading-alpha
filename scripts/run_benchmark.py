@@ -1,9 +1,9 @@
 """ATLAS Benchmark Runner — main entry point for running the full benchmark.
 
 Usage:
-    python -m scripts.run_benchmark
-    python -m scripts.run_benchmark --market CRYPTO
-    python -m scripts.run_benchmark --cycles 10
+    python scripts/run_benchmark.py
+    python scripts/run_benchmark.py --market CRYPTO
+    python scripts/run_benchmark.py --market US CRYPTO --cycles 10
 """
 
 from __future__ import annotations
@@ -26,10 +26,11 @@ from src.core.types import (
     ModelProvider,
 )
 from src.agents.orchestrator import BenchmarkOrchestrator
-from src.data.normalizer import DataNormalizer
-from src.data.scheduler import MarketScheduler
+from src.analytics.results_store import ResultsStore
+from src.data.collector import DataCollector
 from src.llm.call_logger import LLMCallLogger
 from src.llm.cost_tracker import CostTracker
+from src.simulator.baselines import BuyAndHoldBaseline
 from src.simulator.order_engine import OrderEngine
 from src.simulator.pnl_calculator import PnLCalculator
 from src.simulator.portfolio import PortfolioManager
@@ -45,8 +46,9 @@ def _load_market_configs() -> dict[str, dict[str, object]]:
     with markets_yaml.open(encoding="utf-8") as fh:
         raw = yaml.safe_load(fh)
     configs: dict[str, dict[str, object]] = {}
-    for market_key in ("KRX", "US", "CRYPTO"):
-        section = raw.get(market_key, {})
+    for market_key, section in raw.items():
+        if not isinstance(section, dict):
+            continue
         configs[market_key] = {
             "commission": section.get("commission", {}),
             "slippage": section.get("slippage", 0.001),
@@ -54,6 +56,7 @@ def _load_market_configs() -> dict[str, dict[str, object]]:
             "min_cash_ratio": section.get("min_cash_ratio", 0.20),
         }
     return configs
+
 
 setup_logging()
 log = get_logger(__name__)
@@ -63,6 +66,13 @@ INITIAL_CAPITALS: dict[Market, float] = {
     Market.KRX: 100_000_000,  # 1억원
     Market.US: 100_000,
     Market.CRYPTO: 100_000,
+    Market.JPX: 10_000_000,   # 1000万円
+    Market.SSE: 500_000,      # 50万元
+    Market.HKEX: 500_000,     # HK$50万
+    Market.EURONEXT: 100_000,
+    Market.LSE: 100_000,
+    Market.BOND: 100_000,
+    Market.COMMODITIES: 100_000,
 }
 
 
@@ -71,9 +81,10 @@ class BenchmarkRunner:
 
     Lifecycle:
         1. Initialize portfolios (9 per market)
-        2. Start scheduler (fixed-interval + event triggers)
-        3. Each cycle: collect data -> normalize -> run agents -> execute trades -> update PnL
-        4. On shutdown: save final state + export reports
+        2. Collect market data via DataCollector
+        3. Each cycle: collect data -> run agents -> execute trades -> update PnL
+        4. Save results to JSONL via ResultsStore
+        5. On shutdown: save final state
     """
 
     def __init__(
@@ -85,25 +96,31 @@ class BenchmarkRunner:
         self._max_cycles = max_cycles  # 0 = unlimited
         self._cycle_count = 0
         self._running = False
+        self._started_at = datetime.now(timezone.utc).isoformat()
 
         # Subsystems
         self._cost_tracker = CostTracker()
         self._call_logger = LLMCallLogger()
         self._portfolio_manager = PortfolioManager()
         self._order_engine = OrderEngine()
-        self._pnl_calculator = PnLCalculator()
         self._market_configs = _load_market_configs()
-        self._normalizer = DataNormalizer()
+        self._data_collector = DataCollector()
+        self._results_store = ResultsStore()
         self._orchestrator = BenchmarkOrchestrator(
             cost_tracker=self._cost_tracker,
             call_logger=self._call_logger,
+            portfolio_manager=self._portfolio_manager,
         )
+
+        # Buy & Hold baseline per market
+        self._baselines: dict[Market, BuyAndHoldBaseline] = {}
 
     async def initialize(self) -> None:
         """Initialize all portfolios and register agents."""
         for market in self._markets:
             capital = INITIAL_CAPITALS.get(market, 100_000)
             self._portfolio_manager.init_portfolios(market, capital)
+            self._baselines[market] = BuyAndHoldBaseline()
             log.info(
                 "market_initialized",
                 market=market.value,
@@ -119,86 +136,83 @@ class BenchmarkRunner:
             agents=self._orchestrator.registered_agents,
         )
 
+        # Save initial status
+        self._results_store.update_status(
+            running=True,
+            cycle_count=0,
+            markets=[m.value for m in self._markets],
+            registered_agents=self._orchestrator.registered_agents,
+            total_cost_usd=0.0,
+            started_at=self._started_at,
+        )
+
+        # Save initial portfolio snapshots (cycle 0)
+        for portfolio in self._portfolio_manager.snapshot_all():
+            self._results_store.save_portfolio_snapshot(portfolio, cycle=0)
+
     async def _register_agents(self) -> None:
         """Attempt to register all agent combinations.
 
         Agents with missing API keys are skipped with a warning.
+        For SINGLE architecture: uses SingleAgent.
+        For MULTI architecture: uses MultiAgentPipeline (5-stage).
         """
         from config.settings import get_settings
         settings = get_settings()
 
-        # Try each model adapter
-        adapters: dict[ModelProvider, object | None] = {}
-
-        # DeepSeek
-        if settings.deepseek_api_key.get_secret_value():
-            try:
-                from src.llm.deepseek_adapter import DeepSeekAdapter
-                adapters[ModelProvider.DEEPSEEK] = DeepSeekAdapter(
-                    cost_tracker=self._cost_tracker,
-                    call_logger=self._call_logger,
-                )
-            except Exception as exc:
-                log.warning("deepseek_adapter_init_failed", error=str(exc))
-        else:
-            log.warning("deepseek_api_key_missing")
-
-        # Gemini
-        if settings.gemini_api_key.get_secret_value():
-            try:
-                from src.llm.gemini_adapter import GeminiAdapter
-                adapters[ModelProvider.GEMINI] = GeminiAdapter(
-                    cost_tracker=self._cost_tracker,
-                    call_logger=self._call_logger,
-                )
-            except Exception as exc:
-                log.warning("gemini_adapter_init_failed", error=str(exc))
-        else:
-            log.warning("gemini_api_key_missing")
-
-        # Claude
-        if settings.anthropic_api_key.get_secret_value():
-            try:
-                from src.llm.claude_adapter import ClaudeAdapter
-                adapters[ModelProvider.CLAUDE] = ClaudeAdapter(
-                    cost_tracker=self._cost_tracker,
-                    call_logger=self._call_logger,
-                )
-            except Exception as exc:
-                log.warning("claude_adapter_init_failed", error=str(exc))
-        else:
-            log.warning("anthropic_api_key_missing")
-
-        # GPT
-        if settings.openai_api_key.get_secret_value():
-            try:
-                from src.llm.gpt_adapter import GPTAdapter
-                adapters[ModelProvider.GPT] = GPTAdapter(
-                    cost_tracker=self._cost_tracker,
-                    call_logger=self._call_logger,
-                )
-            except Exception as exc:
-                log.warning("gpt_adapter_init_failed", error=str(exc))
-        else:
-            log.warning("openai_api_key_missing")
-
-        # Register single agents for each available model
         from src.agents.single_agent import SingleAgent
 
-        for model, adapter in adapters.items():
-            if adapter is None:
+        adapter_configs: list[tuple[ModelProvider, str, str, str]] = [
+            (ModelProvider.DEEPSEEK, "deepseek_api_key", "src.llm.deepseek_adapter", "DeepSeekAdapter"),
+            (ModelProvider.GEMINI, "gemini_api_key", "src.llm.gemini_adapter", "GeminiAdapter"),
+            (ModelProvider.CLAUDE, "anthropic_api_key", "src.llm.claude_adapter", "ClaudeAdapter"),
+            (ModelProvider.GPT, "openai_api_key", "src.llm.gpt_adapter", "GPTAdapter"),
+        ]
+
+        for model, key_attr, module_path, class_name in adapter_configs:
+            api_key = getattr(settings, key_attr).get_secret_value()
+            if not api_key:
+                log.warning(f"{key_attr}_missing", model=model.value)
                 continue
-            single_agent = SingleAgent(llm_adapter=adapter)
-            self._orchestrator.register_agent(
-                model=model,
-                architecture=AgentArchitecture.SINGLE,
-                agent=single_agent,
-            )
+
+            for arch in AgentArchitecture:
+                try:
+                    import importlib
+                    mod = importlib.import_module(module_path)
+                    adapter_cls = getattr(mod, class_name)
+                    adapter = adapter_cls(
+                        architecture=arch,
+                        cost_tracker=self._cost_tracker,
+                        call_logger=self._call_logger,
+                    )
+
+                    if arch == AgentArchitecture.MULTI:
+                        # Use MultiAgentPipeline for MULTI architecture
+                        from src.agents.multi_agent.graph import MultiAgentPipeline
+                        agent: object = MultiAgentPipeline(
+                            llm_adapter=adapter,
+                            model_provider=model,
+                        )
+                    else:
+                        agent = SingleAgent(llm_adapter=adapter)
+
+                    self._orchestrator.register_agent(
+                        model=model,
+                        architecture=arch,
+                        agent=agent,
+                    )
+                except Exception as exc:
+                    log.warning(
+                        "agent_init_failed",
+                        model=model.value,
+                        architecture=arch.value,
+                        error=str(exc),
+                    )
 
         log.info(
             "agents_registered",
             count=len(self._orchestrator.registered_agents),
-            models=[m.value for m in adapters if adapters[m] is not None],
+            agents=self._orchestrator.registered_agents,
         )
 
     async def run(self) -> None:
@@ -220,8 +234,8 @@ class BenchmarkRunner:
                     log.info("benchmark_max_cycles_reached", cycles=self._cycle_count)
                     break
 
-                # Wait for next cycle (configurable per market, use shortest)
-                wait_seconds = 15 * 60  # 15 min default (crypto)
+                # Wait for next cycle (use shortest interval from active markets)
+                wait_seconds = 15 * 60  # 15 min default
                 log.info("cycle_waiting", next_in_seconds=wait_seconds)
                 await asyncio.sleep(wait_seconds)
 
@@ -235,32 +249,102 @@ class BenchmarkRunner:
         await self.shutdown()
 
     async def _run_cycle(self) -> None:
-        """Execute a single benchmark cycle."""
-        cycle_start = datetime.now(timezone.utc)
-        log.info("cycle_start", cycle=self._cycle_count + 1, timestamp=str(cycle_start))
+        """Execute a single benchmark cycle.
 
-        # 1. Collect and normalize market data
-        snapshots = {}
-        for market in self._markets:
-            try:
-                snapshot = await self._normalizer.build_snapshot(market)
-                if snapshot is not None:
-                    snapshots[market] = snapshot
-            except Exception as exc:
-                log.error("snapshot_failed", market=market.value, error=str(exc))
+        Pipeline: collect data -> run agents -> execute baselines ->
+                  execute trades -> update PnL -> save results
+        """
+        cycle_start = datetime.now(timezone.utc)
+        cycle_num = self._cycle_count + 1
+        log.info("cycle_start", cycle=cycle_num, timestamp=str(cycle_start))
+
+        # 1. Collect market data via DataCollector
+        snapshots = await self._data_collector.collect_all(self._markets)
 
         if not snapshots:
-            log.warning("no_snapshots_available")
+            log.warning("no_snapshots_available", cycle=cycle_num)
             return
 
-        # 2. Run all agents
+        log.info(
+            "data_collected",
+            cycle=cycle_num,
+            markets=[m.value for m in snapshots],
+            symbols={m.value: len(s.symbols) for m, s in snapshots.items()},
+        )
+
+        # 2. Run all LLM agents via orchestrator
         all_signals = await self._orchestrator.run_cycle(snapshots)
 
-        # 3. Execute trades for each signal
+        # 3. Run Buy & Hold baseline for each market (execute separately)
+        for market, snapshot in snapshots.items():
+            baseline = self._baselines.get(market)
+            if baseline is None:
+                continue
+            try:
+                bh_portfolio = self._portfolio_manager.get_buy_hold_state(market)
+                bh_signals = baseline.generate_signals(snapshot, bh_portfolio)
+
+                for sig in bh_signals:
+                    self._results_store.save_signal(sig, cycle=cycle_num)
+
+                    symbol_data = snapshot.symbols.get(sig.symbol)
+                    if symbol_data is None or sig.action == Action.HOLD:
+                        continue
+
+                    market_cfg = self._market_configs.get(market.value, {})
+                    trade = self._order_engine.execute_signal(
+                        signal=sig,
+                        portfolio=bh_portfolio,
+                        market_config=market_cfg,
+                        close_price=symbol_data.close,
+                    )
+
+                    if trade is not None:
+                        qty_delta = trade.quantity if trade.action == Action.BUY else -trade.quantity
+                        self._portfolio_manager.update_position(
+                            bh_portfolio.portfolio_id,
+                            trade.symbol,
+                            qty_delta,
+                            trade.price,
+                            trade.commission,
+                        )
+                        # Refresh portfolio state after each trade
+                        bh_portfolio = self._portfolio_manager.get_buy_hold_state(market)
+                        trade_count += 1
+
+                        self._results_store.save_trade(
+                            trade_id=trade.trade_id,
+                            signal_id=trade.signal_id,
+                            symbol=trade.symbol,
+                            action=trade.action.value,
+                            quantity=trade.quantity,
+                            price=trade.price,
+                            commission=trade.commission,
+                            realized_pnl=trade.realized_pnl,
+                            cycle=cycle_num,
+                        )
+
+                log.info(
+                    "baseline_signals_generated",
+                    market=market.value,
+                    n_signals=len(bh_signals),
+                    cycle=cycle_num,
+                )
+            except Exception as exc:
+                log.error(
+                    "baseline_execution_failed",
+                    market=market.value,
+                    error=str(exc),
+                )
+
+        # 4. Execute trades for each LLM signal + save signals
         trade_count = 0
         for market_key, signals in all_signals.items():
             market = Market(market_key)
             for sig in signals:
+                # Save every signal
+                self._results_store.save_signal(sig, cycle=cycle_num)
+
                 try:
                     portfolio = self._portfolio_manager.get_state(
                         sig.model, sig.architecture, market,
@@ -294,6 +378,19 @@ class BenchmarkRunner:
                         )
                         trade_count += 1
 
+                        # Save trade
+                        self._results_store.save_trade(
+                            trade_id=trade.trade_id,
+                            signal_id=trade.signal_id,
+                            symbol=trade.symbol,
+                            action=trade.action.value,
+                            quantity=trade.quantity,
+                            price=trade.price,
+                            commission=trade.commission,
+                            realized_pnl=trade.realized_pnl,
+                            cycle=cycle_num,
+                        )
+
                 except Exception as exc:
                     log.error(
                         "trade_execution_failed",
@@ -301,7 +398,7 @@ class BenchmarkRunner:
                         error=str(exc),
                     )
 
-        # 4. Update PnL for all portfolios
+        # 5. Update PnL mark-to-market for all portfolios
         for market in self._markets:
             snapshot = snapshots.get(market)
             if snapshot is None:
@@ -311,12 +408,41 @@ class BenchmarkRunner:
             }
             for portfolio in self._portfolio_manager.snapshot_all():
                 if portfolio.market == market:
-                    PnLCalculator.update_portfolio_values(portfolio, current_prices)
+                    updated = PnLCalculator.update_portfolio_values(portfolio, current_prices)
+                    self._portfolio_manager.set_state(portfolio.portfolio_id, updated)
+
+        # 6. Save portfolio snapshots + cost records
+        for portfolio in self._portfolio_manager.snapshot_all():
+            self._results_store.save_portfolio_snapshot(portfolio, cycle=cycle_num)
+
+        # Save new cost records from this cycle
+        all_cost_records = self._cost_tracker.get_records()
+        # Only save records we haven't saved yet (approximate by count)
+        new_records = all_cost_records[-(len(all_cost_records) - self._cycle_count * 8):]
+        for record in new_records:
+            self._results_store.save_cost_record(
+                model=record.model,
+                input_tokens=record.input_tokens,
+                output_tokens=record.output_tokens,
+                cost_usd=record.cost_usd,
+                latency_ms=record.latency_ms,
+                cycle=cycle_num,
+            )
+
+        # 7. Update status
+        self._results_store.update_status(
+            running=self._running,
+            cycle_count=cycle_num,
+            markets=[m.value for m in self._markets],
+            registered_agents=self._orchestrator.registered_agents,
+            total_cost_usd=self._cost_tracker.total_cost_usd,
+            started_at=self._started_at,
+        )
 
         elapsed = (datetime.now(timezone.utc) - cycle_start).total_seconds()
         log.info(
             "cycle_complete",
-            cycle=self._cycle_count + 1,
+            cycle=cycle_num,
             signals=sum(len(s) for s in all_signals.values()),
             trades=trade_count,
             elapsed_seconds=round(elapsed, 2),
@@ -324,12 +450,24 @@ class BenchmarkRunner:
         )
 
     async def shutdown(self) -> None:
-        """Graceful shutdown — save state and export reports."""
+        """Graceful shutdown — save final state."""
         self._running = False
+
+        # Save final status
+        self._results_store.update_status(
+            running=False,
+            cycle_count=self._cycle_count,
+            markets=[m.value for m in self._markets],
+            registered_agents=self._orchestrator.registered_agents,
+            total_cost_usd=self._cost_tracker.total_cost_usd,
+            started_at=self._started_at,
+        )
+
         log.info(
             "benchmark_shutdown",
             total_cycles=self._cycle_count,
             total_cost=self._cost_tracker.summary(),
+            results_dir=str(self._results_store.results_dir),
         )
 
     @property
@@ -340,6 +478,10 @@ class BenchmarkRunner:
     def portfolio_manager(self) -> PortfolioManager:
         return self._portfolio_manager
 
+    @property
+    def results_store(self) -> ResultsStore:
+        return self._results_store
+
 
 def parse_args() -> argparse.Namespace:
     """Parse command-line arguments."""
@@ -349,7 +491,7 @@ def parse_args() -> argparse.Namespace:
         type=str,
         nargs="+",
         default=["CRYPTO"],
-        choices=["KRX", "US", "CRYPTO"],
+        choices=[m.value for m in Market],
         help="Markets to benchmark (default: CRYPTO)",
     )
     parser.add_argument(

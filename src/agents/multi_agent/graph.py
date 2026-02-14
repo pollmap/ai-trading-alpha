@@ -1,4 +1,9 @@
-"""LangGraph multi-agent workflow definition."""
+"""LangGraph multi-agent workflow definition.
+
+Each stage uses ``call_with_prompt()`` to send a role-specific system
+prompt to the LLM, ensuring that analysts, debaters, trader, risk
+manager, and fund manager each receive their specialised instructions.
+"""
 
 from __future__ import annotations
 
@@ -61,7 +66,8 @@ class MultiAgentPipeline:
     4. Risk Manager evaluates (VETO -> back to Trader, max 2 retries)
     5. Fund Manager gives final approval
 
-    Each node uses the same LLM adapter (same model provider).
+    Each node uses the same LLM adapter (same model provider) but with
+    a **different system prompt** via ``call_with_prompt()``.
     """
 
     def __init__(
@@ -128,8 +134,10 @@ class MultiAgentPipeline:
 
         return self._build_signal(state, snapshot)
 
+    # ── Stage 1: Analysts (parallel) ─────────────────────────────
+
     async def _run_analysts(self, state: MultiAgentState) -> MultiAgentState:
-        """Run 4 analysts in parallel."""
+        """Run 4 analysts in parallel, each with its own system prompt."""
         from src.llm.prompt_templates.analyst import (
             build_fundamental_prompt,
             build_news_prompt,
@@ -138,13 +146,19 @@ class MultiAgentPipeline:
         )
 
         snapshot = state["snapshot"]
+        portfolio = state["portfolio"]
         market = snapshot.market
         market_data = snapshot.to_prompt_summary()
-        portfolio_data = state["portfolio"].to_prompt_summary()
+        portfolio_data = portfolio.to_prompt_summary()
+        user_prompt = f"Market Data:\n{market_data}\n\nPortfolio:\n{portfolio_data}"
 
         async def call_analyst(system_prompt: str) -> str:
-            user_prompt = f"Market Data:\n{market_data}\n\nPortfolio:\n{portfolio_data}"
-            signal = await self._adapter.generate_signal(snapshot, state["portfolio"])
+            signal = await self._adapter.call_with_prompt(
+                system_prompt=system_prompt,
+                user_prompt=user_prompt,
+                snapshot=snapshot,
+                portfolio=portfolio,
+            )
             return signal.reasoning
 
         tasks = [
@@ -164,8 +178,18 @@ class MultiAgentPipeline:
         log.info("analysts_complete", model=self._model_provider.value)
         return state
 
+    # ── Stage 2: Bull/Bear Debate ────────────────────────────────
+
     async def _run_debate(self, state: MultiAgentState) -> MultiAgentState:
         """Run Bull/Bear debate for configured rounds."""
+        from src.llm.prompt_templates.researcher import (
+            build_bear_prompt,
+            build_bull_prompt,
+            build_debate_rebuttal_prompt,
+        )
+
+        snapshot = state["snapshot"]
+        portfolio = state["portfolio"]
         reports = (
             f"Fundamental: {state.get('fundamental_report', 'N/A')}\n"
             f"Technical: {state.get('technical_report', 'N/A')}\n"
@@ -174,35 +198,96 @@ class MultiAgentPipeline:
         )
 
         # Initial cases
-        bull_signal = await self._adapter.generate_signal(state["snapshot"], state["portfolio"])
+        bull_signal = await self._adapter.call_with_prompt(
+            system_prompt=build_bull_prompt(),
+            user_prompt=f"Analyst Reports:\n{reports}\n\nPortfolio:\n{portfolio.to_prompt_summary()}",
+            snapshot=snapshot,
+            portfolio=portfolio,
+        )
         state["bull_case"] = f"BULL: {bull_signal.reasoning}"
 
-        bear_signal = await self._adapter.generate_signal(state["snapshot"], state["portfolio"])
+        bear_signal = await self._adapter.call_with_prompt(
+            system_prompt=build_bear_prompt(),
+            user_prompt=f"Analyst Reports:\n{reports}\n\nPortfolio:\n{portfolio.to_prompt_summary()}",
+            snapshot=snapshot,
+            portfolio=portfolio,
+        )
         state["bear_case"] = f"BEAR: {bear_signal.reasoning}"
 
         debate_log = state.get("debate_log", [])
         debate_log.append(f"Round 1 Bull: {state['bull_case'][:500]}")
         debate_log.append(f"Round 1 Bear: {state['bear_case'][:500]}")
 
-        # Additional debate rounds
+        # Additional debate rounds (rebuttals)
         for round_num in range(2, self._debate_rounds + 1):
-            rebuttal = await self._adapter.generate_signal(state["snapshot"], state["portfolio"])
+            rebuttal_prompt = build_debate_rebuttal_prompt("bull")
+            rebuttal_user = (
+                f"Your previous argument:\n{state['bull_case'][:500]}\n\n"
+                f"Opposing argument:\n{state['bear_case'][:500]}\n\n"
+                f"Analyst Reports:\n{reports}"
+            )
+            rebuttal = await self._adapter.call_with_prompt(
+                system_prompt=rebuttal_prompt,
+                user_prompt=rebuttal_user,
+                snapshot=snapshot,
+                portfolio=portfolio,
+            )
             debate_log.append(f"Round {round_num}: {rebuttal.reasoning[:500]}")
 
         state["debate_log"] = debate_log
         log.info("debate_complete", model=self._model_provider.value, rounds=self._debate_rounds)
         return state
 
+    # ── Stage 3: Trader ──────────────────────────────────────────
+
     async def _run_trader(self, state: MultiAgentState) -> MultiAgentState:
         """Trader synthesizes debate into trade proposal."""
-        signal = await self._adapter.generate_signal(state["snapshot"], state["portfolio"])
+        from src.llm.prompt_templates.trader import build_trader_prompt
+
+        snapshot = state["snapshot"]
+        portfolio = state["portfolio"]
+        reports = (
+            f"Fundamental: {state.get('fundamental_report', 'N/A')}\n"
+            f"Technical: {state.get('technical_report', 'N/A')}\n"
+            f"Sentiment: {state.get('sentiment_report', 'N/A')}\n"
+            f"News: {state.get('news_report', 'N/A')}"
+        )
+        debate = "\n".join(state.get("debate_log", []))
+
+        signal = await self._adapter.call_with_prompt(
+            system_prompt=build_trader_prompt(),
+            user_prompt=(
+                f"Analyst Reports:\n{reports}\n\n"
+                f"Debate Log:\n{debate}\n\n"
+                f"Portfolio:\n{portfolio.to_prompt_summary()}\n\n"
+                f"Market Data:\n{snapshot.to_prompt_summary()}"
+            ),
+            snapshot=snapshot,
+            portfolio=portfolio,
+        )
         state["trade_proposal"] = signal.reasoning
         log.info("trader_decision_complete", model=self._model_provider.value)
         return state
 
+    # ── Stage 4: Risk Manager ────────────────────────────────────
+
     async def _run_risk_manager(self, state: MultiAgentState) -> MultiAgentState:
         """Risk Manager evaluates the trade proposal."""
-        signal = await self._adapter.generate_signal(state["snapshot"], state["portfolio"])
+        from src.llm.prompt_templates.risk_manager import build_risk_manager_prompt
+
+        snapshot = state["snapshot"]
+        portfolio = state["portfolio"]
+
+        signal = await self._adapter.call_with_prompt(
+            system_prompt=build_risk_manager_prompt(),
+            user_prompt=(
+                f"Trade Proposal:\n{state.get('trade_proposal', 'N/A')}\n\n"
+                f"Portfolio:\n{portfolio.to_prompt_summary()}\n\n"
+                f"Market Data:\n{snapshot.to_prompt_summary()}"
+            ),
+            snapshot=snapshot,
+            portfolio=portfolio,
+        )
 
         # Parse risk decision from reasoning
         approved = "approve" in signal.reasoning.lower() or signal.action != Action.HOLD
@@ -216,9 +301,35 @@ class MultiAgentPipeline:
         )
         return state
 
+    # ── Stage 5: Fund Manager ────────────────────────────────────
+
     async def _run_fund_manager(self, state: MultiAgentState) -> MultiAgentState:
         """Fund Manager gives final approval."""
-        signal = await self._adapter.generate_signal(state["snapshot"], state["portfolio"])
+        from src.llm.prompt_templates.fund_manager import build_fund_manager_prompt
+
+        snapshot = state["snapshot"]
+        portfolio = state["portfolio"]
+        reports = (
+            f"Fundamental: {state.get('fundamental_report', 'N/A')}\n"
+            f"Technical: {state.get('technical_report', 'N/A')}\n"
+            f"Sentiment: {state.get('sentiment_report', 'N/A')}\n"
+            f"News: {state.get('news_report', 'N/A')}"
+        )
+        debate = "\n".join(state.get("debate_log", []))
+
+        signal = await self._adapter.call_with_prompt(
+            system_prompt=build_fund_manager_prompt(),
+            user_prompt=(
+                f"Analyst Reports:\n{reports}\n\n"
+                f"Debate Log:\n{debate}\n\n"
+                f"Trade Proposal:\n{state.get('trade_proposal', 'N/A')}\n\n"
+                f"Risk Assessment:\n{state.get('risk_assessment', 'N/A')}\n\n"
+                f"Portfolio:\n{portfolio.to_prompt_summary()}\n\n"
+                f"Market Data:\n{snapshot.to_prompt_summary()}"
+            ),
+            snapshot=snapshot,
+            portfolio=portfolio,
+        )
 
         state["final_signal"] = {
             "action": signal.action.value,
@@ -230,6 +341,8 @@ class MultiAgentPipeline:
 
         log.info("fund_manager_complete", model=self._model_provider.value)
         return state
+
+    # ── Signal Builder ───────────────────────────────────────────
 
     def _build_signal(
         self, state: MultiAgentState, snapshot: MarketSnapshot,
