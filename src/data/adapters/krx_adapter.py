@@ -6,6 +6,7 @@ import asyncio
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import yaml
 from pykrx import stock as pykrx_stock
@@ -58,12 +59,11 @@ class KRXAdapter(BaseMarketDataAdapter):
         after all retries are logged and excluded from the result rather than
         raising, so the pipeline can continue with a partial snapshot.
         """
-        today_str = datetime.now(timezone.utc).strftime("%Y%m%d")
-        # pykrx uses KST dates internally; fetch today and yesterday to
-        # ensure we get at least one trading day of data.
-        yesterday_str = (datetime.now(timezone.utc) - timedelta(days=1)).strftime(
-            "%Y%m%d",
-        )
+        # pykrx uses KST dates internally — must use KST, not UTC
+        kst_now = datetime.now(ZoneInfo("Asia/Seoul"))
+        today_str = kst_now.strftime("%Y%m%d")
+        # Fetch today and yesterday to ensure at least one trading day of data
+        yesterday_str = (kst_now - timedelta(days=1)).strftime("%Y%m%d")
 
         tasks = [
             self._fetch_symbol(symbol, yesterday_str, today_str)

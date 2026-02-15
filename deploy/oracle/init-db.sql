@@ -14,8 +14,13 @@ CREATE TABLE IF NOT EXISTS tenants (
     is_active       BOOLEAN NOT NULL DEFAULT true,
     created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
     last_login      TIMESTAMPTZ,
+    provider        TEXT DEFAULT '',
+    provider_id     TEXT DEFAULT '',
+    avatar_url      TEXT DEFAULT '',
     metadata        JSONB DEFAULT '{}'
 );
+
+CREATE INDEX IF NOT EXISTS idx_tenants_provider ON tenants(provider, provider_id);
 
 -- ── Portfolios ──────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS portfolios (
@@ -129,6 +134,20 @@ CREATE TABLE IF NOT EXISTS simulations (
 
 CREATE INDEX IF NOT EXISTS idx_simulations_tenant ON simulations(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_simulations_status ON simulations(status);
+
+-- ── Simulation Queue (Redis backup / fallback) ──────────────────
+CREATE TABLE IF NOT EXISTS simulation_queue (
+    id              SERIAL PRIMARY KEY,
+    simulation_id   TEXT NOT NULL REFERENCES simulations(simulation_id),
+    tenant_id       TEXT NOT NULL REFERENCES tenants(tenant_id),
+    status          TEXT NOT NULL DEFAULT 'pending',
+    priority        INTEGER DEFAULT 0,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    picked_at       TIMESTAMPTZ,
+    completed_at    TIMESTAMPTZ
+);
+
+CREATE INDEX IF NOT EXISTS idx_simqueue_status ON simulation_queue(status, priority DESC);
 
 -- ── Custom Strategies ──────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS strategies (

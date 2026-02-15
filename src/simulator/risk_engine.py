@@ -90,8 +90,8 @@ class RiskEngine:
         checks.append(self._check_position_limit(signal, portfolio))
         checks.append(self._check_cash_reserve(signal, portfolio))
         checks.append(self._check_confidence(signal))
-        checks.append(self._check_drawdown(portfolio))
-        checks.append(self._check_daily_loss(portfolio))
+        checks.append(self._check_drawdown(signal, portfolio))
+        checks.append(self._check_daily_loss(signal, portfolio))
 
         # Calculate VaR if history available
         var: float = (
@@ -182,10 +182,8 @@ class RiskEngine:
             pos = portfolio.positions[signal.symbol]
             existing_value = pos.current_price * pos.quantity
 
-        # Proposed additional allocation (weight * total_value)
-        proposed_additional: float = signal.weight * total_value
-        new_position_value: float = existing_value + proposed_additional
-        new_weight: float = new_position_value / total_value
+        # signal.weight is a TARGET portfolio weight (consistent with OrderEngine)
+        new_weight: float = signal.weight
 
         passed: bool = new_weight <= self._config.max_position_weight
         detail: str = (
@@ -228,8 +226,13 @@ class RiskEngine:
                 limit=self._config.min_cash_ratio,
             )
 
-        # Cash that would remain after the buy
-        spend: float = signal.weight * total_value
+        # Cash that would remain after the buy (weight is target, not additional)
+        existing_value: float = 0.0
+        if signal.symbol in portfolio.positions:
+            pos = portfolio.positions[signal.symbol]
+            existing_value = pos.current_price * pos.quantity
+        target_value: float = signal.weight * total_value
+        spend: float = max(0.0, target_value - existing_value)
         remaining_cash: float = portfolio.cash - spend
         projected_cash_ratio: float = remaining_cash / total_value
 
@@ -287,12 +290,23 @@ class RiskEngine:
             limit=self._config.min_confidence_for_buy,
         )
 
-    def _check_drawdown(self, portfolio: PortfolioState) -> RiskCheck:
+    def _check_drawdown(
+        self, signal: TradingSignal, portfolio: PortfolioState,
+    ) -> RiskCheck:
         """Circuit breaker: block new BUY orders when drawdown exceeds threshold.
 
         SELL and HOLD are always allowed even during drawdown.
         """
         name: str = "drawdown_circuit_breaker"
+
+        # Only block BUY orders — SELL/HOLD must always be allowed
+        if signal.action != Action.BUY:
+            return RiskCheck(
+                name=name,
+                passed=True,
+                detail=f"Action {signal.action.value}; drawdown check not applicable",
+            )
+
         dd: float = self._current_drawdown(portfolio)
         limit: float = self._config.drawdown_circuit_breaker_pct
 
@@ -311,9 +325,23 @@ class RiskEngine:
             limit=limit,
         )
 
-    def _check_daily_loss(self, portfolio: PortfolioState) -> RiskCheck:
-        """Block trading if the accumulated daily loss exceeds the limit."""
+    def _check_daily_loss(
+        self, signal: TradingSignal, portfolio: PortfolioState,
+    ) -> RiskCheck:
+        """Block BUY orders if the accumulated daily loss exceeds the limit.
+
+        SELL and HOLD are always allowed to permit loss-cutting.
+        """
         name: str = "daily_loss_limit"
+
+        # Only block BUY orders — allow SELL to cut losses
+        if signal.action != Action.BUY:
+            return RiskCheck(
+                name=name,
+                passed=True,
+                detail=f"Action {signal.action.value}; daily loss check not applicable",
+            )
+
         pid: str = portfolio.portfolio_id
         daily_pnl: float = self._daily_pnl.get(pid, 0.0)
         limit: float = self._config.daily_loss_limit_pct
