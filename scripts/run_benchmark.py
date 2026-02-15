@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import dataclasses
 import signal
 import sys
 from datetime import datetime, timezone
@@ -24,12 +25,15 @@ from src.core.types import (
     AgentArchitecture,
     Market,
     ModelProvider,
+    PortfolioState,
 )
 from src.agents.orchestrator import BenchmarkOrchestrator
 from src.analytics.results_store import ResultsStore
 from src.data.collector import DataCollector
 from src.llm.call_logger import LLMCallLogger
 from src.llm.cost_tracker import CostTracker
+from src.rl.gpu_position_sizer import GPUPositionSizer
+from src.rl.position_sizer import SCALE_ACTIONS
 from src.simulator.baselines import BuyAndHoldBaseline
 from src.simulator.order_engine import OrderEngine
 from src.simulator.pnl_calculator import PnLCalculator
@@ -97,6 +101,7 @@ class BenchmarkRunner:
         self._cycle_count = 0
         self._running = False
         self._started_at = datetime.now(timezone.utc).isoformat()
+        self._saved_cost_count = 0  # Track how many cost records have been saved
 
         # Subsystems
         self._cost_tracker = CostTracker()
@@ -112,6 +117,10 @@ class BenchmarkRunner:
             portfolio_manager=self._portfolio_manager,
         )
 
+        # RL position sizer (GPU DQN with CPU Q-table fallback)
+        self._position_sizer = GPUPositionSizer()
+        self._rl_model_path = Path("data/rl_model.json")
+
         # Buy & Hold baseline per market
         self._baselines: dict[Market, BuyAndHoldBaseline] = {}
 
@@ -126,6 +135,14 @@ class BenchmarkRunner:
                 market=market.value,
                 initial_capital=capital,
             )
+
+        # Load saved RL model if exists
+        self._position_sizer.load(self._rl_model_path)
+
+        # Try to restore from a previous crash
+        if self._results_store.has_data():
+            if self._try_restore():
+                log.info("resumed_from_crash", cycle_count=self._cycle_count)
 
         # Register agents (import adapters lazily to handle missing API keys)
         await self._register_agents()
@@ -149,6 +166,70 @@ class BenchmarkRunner:
         # Save initial portfolio snapshots (cycle 0)
         for portfolio in self._portfolio_manager.snapshot_all():
             self._results_store.save_portfolio_snapshot(portfolio, cycle=0)
+
+    def _try_restore(self) -> bool:
+        """Attempt to restore portfolio state from a previous run.
+
+        Reads the last equity curve records and status.json to resume
+        the benchmark from where it left off after a crash.
+
+        Portfolios are matched by (model, architecture, market) tuple
+        rather than portfolio_id, since init_portfolios() generates new
+        UUIDs on every startup.
+
+        Returns:
+            True if state was successfully restored.
+        """
+        status = self._results_store.load_status()
+        if status is None or not status.get("running", False):
+            return False
+
+        curves = self._results_store.load_equity_curves()
+        if not curves:
+            return False
+
+        last_cycle = max(r["cycle"] for r in curves)
+        self._cycle_count = last_cycle
+
+        # Restore each portfolio's cash from the last equity curve record.
+        # Use a seen-set to skip duplicate (model, arch, market) keys —
+        # Buy & Hold portfolios share (DEEPSEEK, SINGLE, market) with the
+        # real agent, so we keep only the first (agent) record per key.
+        last_records = [r for r in curves if r["cycle"] == last_cycle]
+        seen: set[tuple[str, str, str]] = set()
+        restored = 0
+        for record in last_records:
+            try:
+                model = ModelProvider(record["model"])
+                arch = AgentArchitecture(record["architecture"])
+                market = Market(record["market"])
+
+                key = (record["model"], record["architecture"], record["market"])
+                if key in seen:
+                    continue  # skip B&H duplicate that shares the same enum combo
+                seen.add(key)
+
+                # Match by (model, arch, market) — works across restarts
+                portfolio = self._portfolio_manager.get_state(model, arch, market)
+
+                updated = PortfolioState(
+                    portfolio_id=portfolio.portfolio_id,
+                    model=model,
+                    architecture=arch,
+                    market=market,
+                    cash=record.get("cash", portfolio.cash),
+                    positions={},  # positions rebuilt from next market data fetch
+                    initial_capital=record.get("initial_capital", portfolio.initial_capital),
+                    created_at=portfolio.created_at,
+                )
+                self._portfolio_manager.set_state(portfolio.portfolio_id, updated)
+                restored += 1
+            except (KeyError, ValueError):
+                # KeyError: portfolio not found; ValueError: invalid enum
+                continue
+
+        log.info("state_restored", cycle=last_cycle, portfolios=restored)
+        return restored > 0
 
     async def _register_agents(self) -> None:
         """Attempt to register all agent combinations.
@@ -275,6 +356,8 @@ class BenchmarkRunner:
         # 2. Run all LLM agents via orchestrator
         all_signals = await self._orchestrator.run_cycle(snapshots)
 
+        trade_count = 0
+
         # 3. Run Buy & Hold baseline for each market (execute separately)
         for market, snapshot in snapshots.items():
             baseline = self._baselines.get(market)
@@ -338,7 +421,6 @@ class BenchmarkRunner:
                 )
 
         # 4. Execute trades for each LLM signal + save signals
-        trade_count = 0
         for market_key, signals in all_signals.items():
             market = Market(market_key)
             for sig in signals:
@@ -358,9 +440,16 @@ class BenchmarkRunner:
                     if symbol_data is None:
                         continue
 
+                    # RL position sizer adjusts signal weight
+                    sizing = self._position_sizer.decide(
+                        signal=sig,
+                        portfolio=portfolio,
+                    )
+                    adjusted_sig = dataclasses.replace(sig, weight=sizing.scaled_weight)
+
                     market_cfg = self._market_configs.get(market.value, {})
                     trade = self._order_engine.execute_signal(
-                        signal=sig,
+                        signal=adjusted_sig,
                         portfolio=portfolio,
                         market_config=market_cfg,
                         close_price=symbol_data.close,
@@ -377,6 +466,25 @@ class BenchmarkRunner:
                             trade.commission,
                         )
                         trade_count += 1
+
+                        # RL update: reward = normalized realized PnL
+                        if portfolio.initial_capital > 0:
+                            reward = trade.realized_pnl / portfolio.initial_capital
+                        else:
+                            reward = 0.0
+                        updated_portfolio = self._portfolio_manager.get_state(
+                            sig.model, sig.architecture, market,
+                        )
+                        next_sizing = self._position_sizer.decide(
+                            signal=sig,
+                            portfolio=updated_portfolio,
+                        )
+                        self._position_sizer.update(
+                            state_key=sizing.state.key,
+                            action_idx=SCALE_ACTIONS.index(sizing.scale_factor),
+                            reward=reward,
+                            next_state_key=next_sizing.state.key,
+                        )
 
                         # Save trade
                         self._results_store.save_trade(
@@ -417,8 +525,8 @@ class BenchmarkRunner:
 
         # Save new cost records from this cycle
         all_cost_records = self._cost_tracker.get_records()
-        # Only save records we haven't saved yet (approximate by count)
-        new_records = all_cost_records[-(len(all_cost_records) - self._cycle_count * 8):]
+        new_records = all_cost_records[self._saved_cost_count:]
+        self._saved_cost_count = len(all_cost_records)
         for record in new_records:
             self._results_store.save_cost_record(
                 model=record.model,
@@ -439,6 +547,9 @@ class BenchmarkRunner:
             started_at=self._started_at,
         )
 
+        # 8. Save RL model periodically
+        self._position_sizer.save(self._rl_model_path)
+
         elapsed = (datetime.now(timezone.utc) - cycle_start).total_seconds()
         log.info(
             "cycle_complete",
@@ -447,6 +558,7 @@ class BenchmarkRunner:
             trades=trade_count,
             elapsed_seconds=round(elapsed, 2),
             cost_summary=self._cost_tracker.summary(),
+            rl_steps=self._position_sizer.total_steps,
         )
 
     async def shutdown(self) -> None:

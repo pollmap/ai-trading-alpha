@@ -128,7 +128,7 @@ class TestSymbolData:
         assert sample_symbol.per == 12.5
 
     def test_negative_close_raises(self) -> None:
-        with pytest.raises(ValueError, match="close price cannot be negative"):
+        with pytest.raises(ValueError, match="close price must be positive"):
             SymbolData(
                 symbol="TEST", market=Market.KRX,
                 open=100.0, high=100.0, low=100.0, close=-1.0,

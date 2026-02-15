@@ -122,13 +122,14 @@ async def get_engine() -> AsyncEngine:
     global _engine  # noqa: PLW0603
     if _engine is None:
         settings = get_settings()
+        db_url = settings.database_url.get_secret_value()
         _engine = create_async_engine(
-            settings.database_url,
+            db_url,
             echo=False,
             pool_size=10,
             max_overflow=20,
         )
-        log.info("database_engine_created", url=settings.database_url.split("@")[-1])
+        log.info("database_engine_created", host=db_url.split("@")[-1].split("?")[0])
     return _engine
 
 

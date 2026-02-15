@@ -61,8 +61,8 @@ class PromptCapturingAdapter(BaseLLMAdapter):
         self.captured_user_prompts.append(user_prompt)
         self._call_count += 1
 
-        # Return approve-friendly signal so pipeline continues
-        return self._make_signal(snapshot, f"Mock response for: {system_prompt[:50]}")
+        # Return approve-friendly signal so risk manager stage passes
+        return self._make_signal(snapshot, "I approve this trade proposal.")
 
     def _make_signal(self, snapshot: MarketSnapshot, reasoning: str) -> TradingSignal:
         return TradingSignal(

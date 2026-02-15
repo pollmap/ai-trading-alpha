@@ -1,4 +1,8 @@
-"""Redis cache layer for market data."""
+"""Redis cache layer for market data.
+
+STATUS: NOT YET INTEGRATED — Redis cache is implemented but not called
+from the benchmark pipeline. Ready for use when real-time caching is needed.
+"""
 
 from __future__ import annotations
 
@@ -32,11 +36,12 @@ class RedisCache:
         """Initialize the Redis connection."""
         if self._redis is None:
             settings = get_settings()
+            redis_url = settings.redis_url.get_secret_value()
             self._redis = aioredis.from_url(
-                settings.redis_url,
+                redis_url,
                 decode_responses=True,
             )
-            log.info("redis_connected", url=settings.redis_url)
+            log.info("redis_connected")
 
     async def close(self) -> None:
         """Close the Redis connection."""

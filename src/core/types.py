@@ -61,8 +61,8 @@ class SymbolData:
     extra: dict[str, object] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
-        if self.close < 0:
-            msg = f"close price cannot be negative: {self.close}"
+        if self.close <= 0:
+            msg = f"close price must be positive: {self.close}"
             raise ValueError(msg)
         if self.volume < 0:
             msg = f"volume cannot be negative: {self.volume}"

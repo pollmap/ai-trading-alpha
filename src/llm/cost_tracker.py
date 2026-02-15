@@ -98,8 +98,12 @@ class CostTracker:
         # Cost is automatically logged and stored
     """
 
+    _MAX_RECORDS = 50_000  # Prevent unbounded memory growth
+
     def __init__(self) -> None:
         self._records: list[CostRecord] = []
+        self._total_cost: float = 0.0  # Running total even after eviction
+        self._total_calls: int = 0
         self._db_writer: object | None = None  # Set externally for DB persistence
 
     @asynccontextmanager
@@ -123,6 +127,11 @@ class CostTracker:
                 latency_ms=latency,
             )
             self._records.append(record)
+            self._total_cost += cost
+            self._total_calls += 1
+            # Evict oldest records to bound memory
+            if len(self._records) > self._MAX_RECORDS:
+                self._records = self._records[-self._MAX_RECORDS:]
 
             log.info(
                 "llm_cost_tracked",
@@ -138,11 +147,11 @@ class CostTracker:
 
     @property
     def total_cost_usd(self) -> float:
-        return sum(r.cost_usd for r in self._records)
+        return self._total_cost
 
     @property
     def total_calls(self) -> int:
-        return len(self._records)
+        return self._total_calls
 
     def cost_by_model(self) -> dict[str, float]:
         result: dict[str, float] = {}

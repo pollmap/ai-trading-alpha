@@ -12,7 +12,7 @@ services:
     environment:
       POSTGRES_DB: atlas
       POSTGRES_USER: atlas
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-atlas_secure_2026}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
     ports:
       - "127.0.0.1:5432:5432"
     volumes:
@@ -58,10 +58,10 @@ services:
     container_name: atlas-backend
     restart: unless-stopped
     environment:
-      DATABASE_URL: postgresql://atlas:${POSTGRES_PASSWORD:-atlas_secure_2026}@postgres:5432/atlas
+      DATABASE_URL: postgresql://atlas:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}@postgres:5432/atlas
       REDIS_URL: redis://redis:6379/0
       ATLAS_API_KEY: ${ATLAS_API_KEY:-}
-      ATLAS_JWT_SECRET: ${ATLAS_JWT_SECRET:-change-me-in-production}
+      ATLAS_JWT_SECRET: ${ATLAS_JWT_SECRET:?Set ATLAS_JWT_SECRET in .env}
       DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
