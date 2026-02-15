@@ -126,55 +126,57 @@ async def update_strategy(
     tenant_id: str = Depends(require_auth),
     engine: AsyncEngine = Depends(get_db_engine),
 ) -> StrategyOut:
-    """Update a strategy (partial update)."""
-    # Check existence
+    """Update a strategy (partial update).
+
+    Uses a single transaction with FOR UPDATE to prevent TOCTOU races.
+    """
     async with engine.begin() as conn:
         result = await conn.execute(
             text(
                 "SELECT * FROM strategies "
-                "WHERE strategy_id = :sid AND tenant_id = :tid"
+                "WHERE strategy_id = :sid AND tenant_id = :tid "
+                "FOR UPDATE"
             ),
             {"sid": strategy_id, "tid": tenant_id},
         )
         existing = result.mappings().first()
 
-    if existing is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Strategy not found",
-        )
+        if existing is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Strategy not found",
+            )
 
-    # Build dynamic SET clause
-    updates: dict[str, object] = {}
-    if body.name is not None:
-        updates["name"] = body.name
-    if body.description is not None:
-        updates["description"] = body.description
-    if body.prompt_template is not None:
-        updates["prompt_template"] = body.prompt_template
-    if body.model is not None:
-        updates["model"] = body.model
-    if body.markets is not None:
-        updates["markets"] = json.dumps(body.markets)
-    if body.risk_params is not None:
-        updates["risk_params"] = json.dumps(body.risk_params)
-    if body.tags is not None:
-        updates["tags"] = json.dumps(body.tags)
-    if body.status is not None:
-        updates["status"] = body.status
+        # Build dynamic SET clause
+        updates: dict[str, object] = {}
+        if body.name is not None:
+            updates["name"] = body.name
+        if body.description is not None:
+            updates["description"] = body.description
+        if body.prompt_template is not None:
+            updates["prompt_template"] = body.prompt_template
+        if body.model is not None:
+            updates["model"] = body.model
+        if body.markets is not None:
+            updates["markets"] = json.dumps(body.markets)
+        if body.risk_params is not None:
+            updates["risk_params"] = json.dumps(body.risk_params)
+        if body.tags is not None:
+            updates["tags"] = json.dumps(body.tags)
+        if body.status is not None:
+            updates["status"] = body.status
 
-    if not updates:
-        return _row_to_strategy(existing)
+        if not updates:
+            return _row_to_strategy(existing)
 
-    now = datetime.now(timezone.utc)
-    updates["updated_at"] = now
-    updates["version"] = existing["version"] + 1
+        now = datetime.now(timezone.utc)
+        updates["updated_at"] = now
+        updates["version"] = existing["version"] + 1
 
-    set_clause = ", ".join(f"{k} = :{k}" for k in updates)
-    updates["sid"] = strategy_id
-    updates["tid"] = tenant_id
+        set_clause = ", ".join(f"{k} = :{k}" for k in updates)
+        updates["sid"] = strategy_id
+        updates["tid"] = tenant_id
 
-    async with engine.begin() as conn:
         await conn.execute(
             text(
                 f"UPDATE strategies SET {set_clause} "  # noqa: S608

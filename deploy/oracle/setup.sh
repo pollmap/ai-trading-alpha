@@ -52,13 +52,19 @@ cd "$APP_DIR"
 # ── 5. Create .env file ─────────────────────────────────────────
 echo "[5/7] Creating environment configuration..."
 if [ ! -f "$APP_DIR/.env" ]; then
-    cat > "$APP_DIR/.env" << 'ENVEOF'
-# Database
-POSTGRES_PASSWORD=atlas_secure_change_me
+    _PG_PASS=$(openssl rand -base64 32 | tr -d '/+=' | head -c 32)
+    _JWT_SEC=$(openssl rand -base64 32 | tr -d '/+=' | head -c 48)
+    _REDIS_PASS=$(openssl rand -base64 32 | tr -d '/+=' | head -c 32)
+    cat > "$APP_DIR/.env" << ENVEOF
+# Database (auto-generated — keep secret)
+POSTGRES_PASSWORD=${_PG_PASS}
 
-# API Authentication (leave empty for public access)
+# API Authentication
 ATLAS_API_KEY=
-ATLAS_JWT_SECRET=change-this-to-random-secret
+ATLAS_JWT_SECRET=${_JWT_SEC}
+
+# Redis Authentication
+REDIS_PASSWORD=${_REDIS_PASS}
 
 # LLM API Keys (add yours)
 DEEPSEEK_API_KEY=

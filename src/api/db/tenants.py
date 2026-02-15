@@ -122,6 +122,16 @@ class TenantRepository:
         tenant.metadata["avatar_url"] = avatar_url
         return tenant
 
+    async def is_active(self, tenant_id: str) -> bool:
+        """Check if a tenant is active (lightweight query for auth middleware)."""
+        async with self._engine.begin() as conn:
+            result = await conn.execute(
+                text("SELECT is_active FROM tenants WHERE tenant_id = :tid"),
+                {"tid": tenant_id},
+            )
+            row = result.first()
+            return bool(row and row[0])
+
     async def update_last_login(self, tenant_id: str) -> None:
         """Update the last_login timestamp."""
         async with self._engine.begin() as conn:

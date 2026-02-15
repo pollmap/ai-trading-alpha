@@ -143,10 +143,23 @@ class ResponseParser:
             confidence = float(data.get("confidence", 0.5))
             reasoning = str(data.get("reasoning", ""))
 
+            # Clamp abnormal values (weight to [0, 1], confidence to [0, 1])
+            weight, confidence = self._clamp_values(weight, confidence)
+
             return action, weight, confidence, reasoning
         except (ValueError, TypeError) as exc:
             log.debug("dict_extraction_failed", error=str(exc))
             return None
+
+    def _clamp_values(self, weight: float, confidence: float) -> tuple[float, float]:
+        """Clamp weight and confidence to valid ranges [0, 1]."""
+        if weight < 0.0 or weight > 1.0:
+            log.warning("clamping_weight", raw_weight=weight, clamped=max(0.0, min(1.0, weight)))
+            weight = max(0.0, min(1.0, weight))
+        if confidence < 0.0 or confidence > 1.0:
+            log.warning("clamping_confidence", raw=confidence, clamped=max(0.0, min(1.0, confidence)))
+            confidence = max(0.0, min(1.0, confidence))
+        return weight, confidence
 
     # ── XML Parsing (Claude) ─────────────────────────────────────
 
@@ -170,6 +183,7 @@ class ResponseParser:
             confidence = float(confidence_match.group(1).strip()) if confidence_match else 0.5
             reasoning = reasoning_match.group(1).strip() if reasoning_match else ""
 
+            weight, confidence = self._clamp_values(weight, confidence)
             return action, weight, confidence, reasoning
         except (ValueError, AttributeError) as exc:
             log.debug("xml_parse_failed", error=str(exc))
@@ -194,6 +208,7 @@ class ResponseParser:
         conf_match = re.search(r"confidence[:\s]*([0-9]*\.?[0-9]+)", raw, re.IGNORECASE)
         confidence = float(conf_match.group(1)) if conf_match else 0.5
 
+        weight, confidence = self._clamp_values(weight, confidence)
         return action, weight, confidence, raw[:1000]
 
     # ── HOLD Fallback ────────────────────────────────────────────

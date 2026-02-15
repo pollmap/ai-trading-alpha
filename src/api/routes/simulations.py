@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 from uuid_extensions import uuid7
 
 from config.settings import get_settings
+from src.api.db.tenants import TenantRepository
 from src.api.deps import get_db_engine, require_auth
 from src.api.models.schemas import SimulationCreate, SimulationOut, SimulationStatus
 from src.core.logging import get_logger
@@ -27,6 +28,26 @@ async def create_simulation(
     engine: AsyncEngine = Depends(get_db_engine),
 ) -> SimulationOut:
     """Create a new simulation and enqueue it for async execution."""
+    # Enforce tenant quota limits
+    repo = TenantRepository(engine)
+    tenant = await repo.find_by_id(tenant_id)
+    if tenant is not None:
+        limits = tenant.limits
+        async with engine.begin() as conn:
+            result = await conn.execute(
+                text(
+                    "SELECT count(*) AS cnt FROM simulations "
+                    "WHERE tenant_id = :tid AND status IN ('queued', 'running')"
+                ),
+                {"tid": tenant_id},
+            )
+            concurrent = result.scalar() or 0
+        if concurrent >= limits.get("max_concurrent_sims", 1):
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail="Concurrent simulation limit reached for your plan",
+            )
+
     sim_id = str(uuid7())
     now = datetime.now(timezone.utc)
 
@@ -136,30 +157,33 @@ async def delete_simulation(
     tenant_id: str = Depends(require_auth),
     engine: AsyncEngine = Depends(get_db_engine),
 ) -> None:
-    """Delete a simulation (only if not running)."""
+    """Delete a simulation (only if not running).
+
+    Uses a single transaction to avoid TOCTOU race conditions.
+    """
     async with engine.begin() as conn:
         result = await conn.execute(
             text(
                 "SELECT status FROM simulations "
-                "WHERE simulation_id = :sid AND tenant_id = :tid"
+                "WHERE simulation_id = :sid AND tenant_id = :tid "
+                "FOR UPDATE"
             ),
             {"sid": simulation_id, "tid": tenant_id},
         )
         row = result.mappings().first()
 
-    if row is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Simulation not found",
-        )
+        if row is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Simulation not found",
+            )
 
-    if row["status"] == "running":
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Cannot delete a running simulation",
-        )
+        if row["status"] == "running":
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Cannot delete a running simulation",
+            )
 
-    async with engine.begin() as conn:
         await conn.execute(
             text(
                 "DELETE FROM simulations "

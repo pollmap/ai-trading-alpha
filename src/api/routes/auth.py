@@ -81,6 +81,14 @@ async def oauth_callback(
         avatar_url=user_info.get("avatar_url", ""),
     )
 
+    # Verify tenant is not deactivated before issuing JWT
+    tenant_record = await repo.find_by_id(tenant_id)
+    if tenant_record is not None and not tenant_record.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Account has been deactivated",
+        )
+
     # Create JWT and set cookie
     token = create_jwt(
         tenant_id,

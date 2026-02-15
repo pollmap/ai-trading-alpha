@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import json
 from datetime import datetime, timezone
-from typing import Any
 
 import redis.asyncio as aioredis
 
@@ -58,7 +57,7 @@ class RedisCache:
 
     # ── Snapshot Cache ───────────────────────────────────────────
 
-    async def set_snapshot(self, market: Market, snapshot_data: dict[str, Any]) -> None:
+    async def set_snapshot(self, market: Market, snapshot_data: dict[str, object]) -> None:
         """Cache a market snapshot with market-specific TTL."""
         r = await self._get_redis()
         key = f"snapshot:{market.value}:latest"
@@ -68,7 +67,7 @@ class RedisCache:
         await r.setex(key, ttl, payload)
         log.debug("snapshot_cached", market=market.value, ttl=ttl)
 
-    async def get_snapshot(self, market: Market) -> dict[str, Any] | None:
+    async def get_snapshot(self, market: Market) -> dict[str, object] | None:
         """Retrieve the latest cached snapshot for a market."""
         r = await self._get_redis()
         key = f"snapshot:{market.value}:latest"
@@ -104,12 +103,12 @@ class RedisCache:
 
     # ── Benchmark State ──────────────────────────────────────────
 
-    async def set_state(self, key: str, data: dict[str, Any]) -> None:
+    async def set_state(self, key: str, data: dict[str, object]) -> None:
         """Persist benchmark state (e.g., cycle count, last run time)."""
         r = await self._get_redis()
         await r.set(f"state:{key}", json.dumps(data, default=str))
 
-    async def get_state(self, key: str) -> dict[str, Any] | None:
+    async def get_state(self, key: str) -> dict[str, object] | None:
         """Retrieve benchmark state."""
         r = await self._get_redis()
         raw = await r.get(f"state:{key}")

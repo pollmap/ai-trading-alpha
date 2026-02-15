@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Literal
 
-from pydantic import SecretStr
+from pydantic import SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -63,6 +63,19 @@ class Settings(BaseSettings):
     atlas_jwt_secret: SecretStr = SecretStr("change-me-in-production")
     atlas_jwt_expiry_hours: int = 24
     frontend_url: str = "http://localhost:3000"
+
+    @model_validator(mode="after")
+    def _check_prod_secrets(self) -> "Settings":
+        """Prevent production deployment with default secrets."""
+        if self.atlas_env == "prod":
+            secret = self.atlas_jwt_secret.get_secret_value()
+            if secret in ("change-me-in-production", "change-this-to-random-secret", ""):
+                msg = (
+                    "ATLAS_JWT_SECRET must be set to a strong random value "
+                    "in production. Generate one with: openssl rand -base64 32"
+                )
+                raise ValueError(msg)
+        return self
 
 
 _settings_instance: Settings | None = None

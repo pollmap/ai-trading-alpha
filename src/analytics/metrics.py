@@ -86,17 +86,18 @@ class MetricsEngine:
         daily_rf = risk_free_rate / TRADING_DAYS_PER_YEAR
         excess_returns = returns - daily_rf
 
-        # Sharpe Ratio
+        # Sharpe Ratio (use consistent ddof=1 for sample std)
         sharpe_ratio = 0.0
-        if np.std(excess_returns) > 0:
+        excess_std = float(np.std(excess_returns, ddof=1))
+        if excess_std > 0:
             sharpe_ratio = float(
-                np.mean(excess_returns) / np.std(excess_returns, ddof=1) * math.sqrt(TRADING_DAYS_PER_YEAR)
+                np.mean(excess_returns) / excess_std * math.sqrt(TRADING_DAYS_PER_YEAR)
             )
 
         # Sortino Ratio (downside deviation only)
         downside = excess_returns[excess_returns < 0]
         sortino_ratio = 0.0
-        if len(downside) > 0 and np.std(downside) > 0:
+        if len(downside) > 0 and np.std(downside, ddof=1) > 0:
             sortino_ratio = float(
                 np.mean(excess_returns) / np.std(downside, ddof=1) * math.sqrt(TRADING_DAYS_PER_YEAR)
             )

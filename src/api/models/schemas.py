@@ -5,6 +5,8 @@ from __future__ import annotations
 from datetime import datetime
 from enum import Enum
 
+from typing import Literal
+
 from pydantic import BaseModel, Field
 
 
@@ -98,7 +100,7 @@ class StrategyUpdate(BaseModel):
     markets: list[str] | None = None
     risk_params: dict[str, object] | None = None
     tags: list[str] | None = None
-    status: str | None = None
+    status: Literal["draft", "active", "paused", "archived"] | None = None
 
 
 class StrategyOut(BaseModel):
