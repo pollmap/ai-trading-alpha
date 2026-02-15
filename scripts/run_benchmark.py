@@ -25,6 +25,7 @@ from src.core.types import (
     AgentArchitecture,
     Market,
     ModelProvider,
+    PortfolioState,
 )
 from src.agents.orchestrator import BenchmarkOrchestrator
 from src.analytics.results_store import ResultsStore
@@ -190,8 +191,12 @@ class BenchmarkRunner:
         last_cycle = max(r["cycle"] for r in curves)
         self._cycle_count = last_cycle
 
-        # Restore each portfolio's cash from the last equity curve record
+        # Restore each portfolio's cash from the last equity curve record.
+        # Use a seen-set to skip duplicate (model, arch, market) keys —
+        # Buy & Hold portfolios share (DEEPSEEK, SINGLE, market) with the
+        # real agent, so we keep only the first (agent) record per key.
         last_records = [r for r in curves if r["cycle"] == last_cycle]
+        seen: set[tuple[str, str, str]] = set()
         restored = 0
         for record in last_records:
             try:
@@ -199,10 +204,14 @@ class BenchmarkRunner:
                 arch = AgentArchitecture(record["architecture"])
                 market = Market(record["market"])
 
+                key = (record["model"], record["architecture"], record["market"])
+                if key in seen:
+                    continue  # skip B&H duplicate that shares the same enum combo
+                seen.add(key)
+
                 # Match by (model, arch, market) — works across restarts
                 portfolio = self._portfolio_manager.get_state(model, arch, market)
 
-                from src.core.types import PortfolioState
                 updated = PortfolioState(
                     portfolio_id=portfolio.portfolio_id,
                     model=model,

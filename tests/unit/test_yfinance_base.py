@@ -119,13 +119,8 @@ def test_fetch_batch_stock_adapter() -> None:
     mock_tickers = MagicMock()
     mock_tickers.tickers = {"7203.T": _make_mock_ticker()}
 
-    with patch("src.data.adapters.yfinance_base.yf", create=True) as mock_yf:
-        # Patch the lazy import inside _yfinance_fetch_batch
-        import importlib
-        import src.data.adapters.yfinance_base as mod
-
-        with patch.dict("sys.modules", {"yfinance": MagicMock(Tickers=lambda x: mock_tickers)}):
-            result = _yfinance_fetch_batch(["7203.T"], _TEST_CONFIG)
+    with patch.dict("sys.modules", {"yfinance": MagicMock(Tickers=lambda x: mock_tickers)}):
+        result = _yfinance_fetch_batch(["7203.T"], _TEST_CONFIG)
 
     assert "7203.T" in result
     data = result["7203.T"]

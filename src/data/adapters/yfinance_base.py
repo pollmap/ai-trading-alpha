@@ -10,7 +10,6 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
 
 import yaml
 
@@ -43,7 +42,7 @@ class YFinanceAdapterConfig:
     # Extra fields extracted from ticker.info: {output_key: info_key}
     info_extra_fields: dict[str, str] = field(default_factory=dict)
     # Static extra fields (not from info): {key: value}
-    static_extra: dict[str, Any] = field(default_factory=dict)
+    static_extra: dict[str, object] = field(default_factory=dict)
 
 
 def _load_symbols_from_yaml(yaml_section: str, defaults: list[str]) -> list[str]:
@@ -90,7 +89,7 @@ def _yfinance_fetch_batch(
             row = hist.iloc[-1]
 
             # Extract fundamentals from ticker.info when configured
-            info: dict[str, Any] = {}
+            info: dict[str, object] = {}
             if config.use_info:
                 info = ticker.info or {}
 
@@ -99,7 +98,7 @@ def _yfinance_fetch_batch(
             market_cap = info.get(config.market_cap_field) if config.market_cap_field else None
 
             # Build extra dict from info fields + static fields
-            extra: dict[str, Any] = {}
+            extra: dict[str, object] = {}
             for out_key, info_key in config.info_extra_fields.items():
                 extra[out_key] = info.get(info_key)
             extra.update(config.static_extra)
