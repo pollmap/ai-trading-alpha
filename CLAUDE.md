@@ -8,7 +8,7 @@ Benchmark system comparing **4 LLMs × 2 agent architectures × 10 global market
 
 ```bash
 pip install -e ".[dev]"          # Install with dev dependencies
-make test                        # Run all 290 tests
+make test                        # Run all 307 tests
 make test-unit                   # Unit tests only
 make test-integration            # Integration tests (E2E + multi-agent)
 make lint                        # ruff check + format check
@@ -148,7 +148,7 @@ deploy/oracle/          # Docker, nginx, SSL, DB schema, setup script
 config/settings.py      # Pydantic Settings (reads .env)
 scripts/run_benchmark.py # Main entry point
 tests/
-├── unit/               # 277 unit tests
+├── unit/               # 294 unit tests
 └── integration/        # 13 integration tests (E2E pipeline + multi-agent)
 ```
 
@@ -180,7 +180,8 @@ tests/
 
 ### Data Adapters
 - All inherit from `BaseDataAdapter` ABC
-- v4 adapters (JPX, SSE, HKEX, etc.) use **lazy imports** (yfinance imported inside fetch function)
+- 7 yfinance adapters (JPX, SSE, HKEX, EURONEXT, LSE, BOND, COMMODITIES) inherit from `YFinanceBaseAdapter` in `yfinance_base.py`
+- `YFinanceAdapterConfig` dataclass controls market, currency, symbols, and field extraction per adapter
 - v1 adapters (US, Crypto) still use module-level import
 - pykrx is synchronous — always wrap with `asyncio.to_thread()`
 - Macro adapters lazy-import fredapi
@@ -205,7 +206,7 @@ tests/
 
 ## Testing Conventions
 
-- **290 total tests**: 277 unit + 13 integration
+- **307 total tests**: 294 unit + 13 integration
 - All tests run without API keys (fully mocked)
 - `pytest.ini` / `pyproject.toml`: `asyncio_mode = "auto"`
 - Test files mirror source: `src/simulator/order_engine.py` → `tests/unit/test_order_engine.py`
