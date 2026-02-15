@@ -172,6 +172,10 @@ class BenchmarkRunner:
         Reads the last equity curve records and status.json to resume
         the benchmark from where it left off after a crash.
 
+        Portfolios are matched by (model, architecture, market) tuple
+        rather than portfolio_id, since init_portfolios() generates new
+        UUIDs on every startup.
+
         Returns:
             True if state was successfully restored.
         """
@@ -190,23 +194,29 @@ class BenchmarkRunner:
         last_records = [r for r in curves if r["cycle"] == last_cycle]
         restored = 0
         for record in last_records:
-            pid = record.get("portfolio_id", "")
             try:
-                portfolio = self._portfolio_manager.get_portfolio_by_id(pid)
+                model = ModelProvider(record["model"])
+                arch = AgentArchitecture(record["architecture"])
+                market = Market(record["market"])
+
+                # Match by (model, arch, market) — works across restarts
+                portfolio = self._portfolio_manager.get_state(model, arch, market)
+
                 from src.core.types import PortfolioState
                 updated = PortfolioState(
-                    portfolio_id=pid,
-                    model=portfolio.model,
-                    architecture=portfolio.architecture,
-                    market=portfolio.market,
+                    portfolio_id=portfolio.portfolio_id,
+                    model=model,
+                    architecture=arch,
+                    market=market,
                     cash=record.get("cash", portfolio.cash),
                     positions={},  # positions rebuilt from next market data fetch
                     initial_capital=record.get("initial_capital", portfolio.initial_capital),
                     created_at=portfolio.created_at,
                 )
-                self._portfolio_manager.set_state(pid, updated)
+                self._portfolio_manager.set_state(portfolio.portfolio_id, updated)
                 restored += 1
-            except KeyError:
+            except (KeyError, ValueError):
+                # KeyError: portfolio not found; ValueError: invalid enum
                 continue
 
         log.info("state_restored", cycle=last_cycle, portfolios=restored)
