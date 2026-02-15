@@ -289,8 +289,11 @@ class MultiAgentPipeline:
             portfolio=portfolio,
         )
 
-        # Parse risk decision from reasoning
-        approved = "approve" in signal.reasoning.lower() or signal.action != Action.HOLD
+        # Parse risk decision — require explicit approval, reject overrides
+        reasoning_lower = signal.reasoning.lower()
+        has_approve = "approve" in reasoning_lower
+        has_reject = any(w in reasoning_lower for w in ("reject", "veto", "deny", "not approve"))
+        approved = has_approve and not has_reject
         state["risk_assessment"] = signal.reasoning
         state["risk_approved"] = approved
 

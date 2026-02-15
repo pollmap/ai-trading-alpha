@@ -97,6 +97,7 @@ class BenchmarkRunner:
         self._cycle_count = 0
         self._running = False
         self._started_at = datetime.now(timezone.utc).isoformat()
+        self._saved_cost_count = 0  # Track how many cost records have been saved
 
         # Subsystems
         self._cost_tracker = CostTracker()
@@ -275,6 +276,8 @@ class BenchmarkRunner:
         # 2. Run all LLM agents via orchestrator
         all_signals = await self._orchestrator.run_cycle(snapshots)
 
+        trade_count = 0
+
         # 3. Run Buy & Hold baseline for each market (execute separately)
         for market, snapshot in snapshots.items():
             baseline = self._baselines.get(market)
@@ -338,7 +341,6 @@ class BenchmarkRunner:
                 )
 
         # 4. Execute trades for each LLM signal + save signals
-        trade_count = 0
         for market_key, signals in all_signals.items():
             market = Market(market_key)
             for sig in signals:
@@ -417,8 +419,8 @@ class BenchmarkRunner:
 
         # Save new cost records from this cycle
         all_cost_records = self._cost_tracker.get_records()
-        # Only save records we haven't saved yet (approximate by count)
-        new_records = all_cost_records[-(len(all_cost_records) - self._cycle_count * 8):]
+        new_records = all_cost_records[self._saved_cost_count:]
+        self._saved_cost_count = len(all_cost_records)
         for record in new_records:
             self._results_store.save_cost_record(
                 model=record.model,

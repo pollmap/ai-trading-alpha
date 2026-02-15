@@ -73,8 +73,11 @@ class LLMCallLogger:
             acc.set_usage(100, 50)
     """
 
+    _MAX_RECORDS = 10_000  # Prevent unbounded memory growth
+
     def __init__(self) -> None:
         self._records: list[CallRecord] = []
+        self._total_calls: int = 0
 
     @asynccontextmanager
     async def log_call(
@@ -102,6 +105,9 @@ class LLMCallLogger:
                 output_tokens=acc.output_tokens,
             )
             self._records.append(record)
+            self._total_calls += 1
+            if len(self._records) > self._MAX_RECORDS:
+                self._records = self._records[-self._MAX_RECORDS:]
 
             log.info(
                 "llm_call_logged",
@@ -118,7 +124,7 @@ class LLMCallLogger:
 
     @property
     def total_calls(self) -> int:
-        return len(self._records)
+        return self._total_calls
 
     @property
     def parse_success_rate(self) -> float:

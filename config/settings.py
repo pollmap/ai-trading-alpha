@@ -49,11 +49,17 @@ class Settings(BaseSettings):
     cryptopanic_api_key: SecretStr = SecretStr("")
 
     # ── Infrastructure ───────────────────────────────────────────
-    database_url: str = "postgresql+asyncpg://atlas:atlas@localhost:5432/atlas"
-    database_url_sync: str = "postgresql://atlas:atlas@localhost:5432/atlas"
-    redis_url: str = "redis://localhost:6379/0"
+    database_url: SecretStr = SecretStr("postgresql+asyncpg://atlas:atlas@localhost:5432/atlas")
+    database_url_sync: SecretStr = SecretStr("postgresql://atlas:atlas@localhost:5432/atlas")
+    redis_url: SecretStr = SecretStr("redis://localhost:6379/0")
+
+
+_settings_instance: Settings | None = None
 
 
 def get_settings() -> Settings:
-    """Singleton-style settings loader."""
-    return Settings()
+    """Singleton settings loader — reads .env once, reuses thereafter."""
+    global _settings_instance  # noqa: PLW0603
+    if _settings_instance is None:
+        _settings_instance = Settings()
+    return _settings_instance
