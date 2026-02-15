@@ -2,7 +2,9 @@
 
 ## Project Overview
 
-Benchmark system comparing **4 LLMs × 2 agent architectures × 10 global markets** via real-time virtual trading. Each market runs 9 independent portfolios (4 models × 2 architectures + Buy & Hold baseline). All LLM calls are cost-tracked and logged.
+Benchmark system comparing **4 LLMs x 2 agent architectures x 10 global markets** via real-time virtual trading. Each market runs 9 independent portfolios (4 models x 2 architectures + Buy & Hold baseline). All LLM calls are cost-tracked and logged. RL-based position sizing adjusts signal weights using a DQN with experience replay.
+
+**Scale:** ~107 Python files (19,500 LOC) · 23 TSX/TS files (2,300 LOC) · 307 tests (4,800 LOC) · 5 deploy configs
 
 ## Build & Run
 
@@ -27,15 +29,15 @@ Entry point: `python scripts/run_benchmark.py --market US CRYPTO --cycles 10`
 
 - **Runtime**: Python 3.11+, asyncio, structlog
 - **LLM Orchestration**: LangGraph (multi-agent state machine, TypedDict state)
-- **Data**: yfinance, pykrx, Binance WebSocket, FRED API
+- **Data**: yfinance, pykrx, Binance WebSocket, FRED API, feedparser
 - **Storage**: PostgreSQL + TimescaleDB, Redis (cache), JSONL (results)
 - **Simulation**: Custom order engine, portfolio manager, PnL calculator
-- **Analytics**: Walk-forward, attribution, regime detection, calibration
-- **RL**: Position sizing with PyTorch (GPU optional, CPU fallback)
-- **Dashboard**: Streamlit + Plotly (9 pages)
-- **Frontend**: Next.js 14 + TypeScript + Tailwind (marketing site, 10 pages)
+- **Analytics**: Walk-forward, attribution, regime detection, calibration (numpy, scipy, scikit-learn)
+- **RL**: Position sizing with PyTorch (GPU optional, CPU fallback), DQN + experience replay
+- **Dashboard**: Streamlit + Plotly (9 pages, all wired)
+- **Frontend**: Next.js 14 + TypeScript + Tailwind (10 pages, 8 components)
 - **Reports**: Excel (openpyxl), Word (python-docx), PDF (reportlab)
-- **Deploy**: Oracle Cloud, Docker, nginx, SSL
+- **Deploy**: Oracle Cloud, Docker Compose (5 services), nginx, Let's Encrypt SSL
 - **Build**: setuptools, pyproject.toml with optional deps: `[reports]`, `[gpu]`, `[dev]`
 - **Linting**: ruff (line-length 100, select E/F/I/N/UP/ANN/B/SIM)
 
@@ -68,12 +70,23 @@ src/
 │
 ├── data/               # Market data collection & normalization
 │   ├── adapters/       # 19 adapters: 10 market + 4 macro + news + onchain + social
+│   │   ├── yfinance_base.py  # YFinanceBaseAdapter + YFinanceAdapterConfig (shared by 7 adapters)
+│   │   ├── krx_adapter.py    # pykrx (async wrapped via to_thread)
+│   │   ├── us_adapter.py     # yfinance (module-level import, v1)
+│   │   ├── crypto_adapter.py # Binance WebSocket (module-level import, v1)
+│   │   ├── jpx_adapter.py    # YFinanceBaseAdapter subclass
+│   │   ├── sse_adapter.py    # YFinanceBaseAdapter subclass
+│   │   ├── hkex_adapter.py   # YFinanceBaseAdapter subclass
+│   │   ├── euronext_adapter.py # YFinanceBaseAdapter subclass
+│   │   ├── lse_adapter.py    # YFinanceBaseAdapter subclass
+│   │   ├── bond_adapter.py   # YFinanceBaseAdapter subclass (per_field=None)
+│   │   └── commodities_adapter.py # YFinanceBaseAdapter subclass (use_info=False)
 │   ├── normalizer.py   # Raw data → MarketSnapshot
 │   ├── collector.py    # Orchestrates adapter calls
-│   ├── cache.py        # Redis cache layer
-│   ├── scheduler.py    # Market-hours-aware scheduling
+│   ├── cache.py        # Redis cache layer (NOT YET INTEGRATED)
+│   ├── scheduler.py    # Market-hours-aware scheduling (NOT YET INTEGRATED)
 │   ├── indicators.py   # Technical indicator calculations
-│   └── db.py           # PostgreSQL connection pool
+│   └── db.py           # PostgreSQL connection pool + SQLAlchemy tables
 │
 ├── llm/                # LLM provider layer
 │   ├── base.py         # BaseLLMAdapterImpl — retry, timeout, cost tracking, call_with_prompt()
@@ -97,7 +110,7 @@ src/
 │   ├── single_agent.py       # snapshot → LLM → signal (1 call)
 │   ├── multi_agent/graph.py  # LangGraph 5-stage pipeline (8+ calls)
 │   ├── orchestrator.py       # Runs all model×arch combinations per cycle
-│   ├── consensus.py          # Multi-signal aggregation
+│   ├── consensus.py          # Multi-signal aggregation (NOT YET INTEGRATED)
 │   ├── reflection.py         # Self-critique loop
 │   └── custom_strategy.py    # User-defined strategy support
 │
@@ -125,7 +138,7 @@ src/
 │   └── attribution.py        # Performance attribution
 │
 ├── rl/                 # Reinforcement learning
-│   ├── position_sizer.py     # RL-based position sizing (CPU)
+│   ├── position_sizer.py     # RL-based position sizing (CPU, DQN + experience replay)
 │   ├── gpu_position_sizer.py # GPU-accelerated (falls back to CPU when PyTorch absent)
 │   └── execution_timer.py    # Execution latency tracking
 │
@@ -136,17 +149,41 @@ src/
 │   └── pdf_report.py         # reportlab
 │
 ├── saas/               # Multi-tenant support
-│   ├── tenant.py             # JWT + API key authentication
-│   └── usage.py              # Metering + quota enforcement
+│   ├── tenant.py             # JWT (HS256 self-impl) + API key + TenantManager (in-memory)
+│   └── usage.py              # Metering + quota enforcement (in-memory)
 │
-└── dashboard/          # Streamlit dashboard (9 pages)
+└── dashboard/          # Streamlit dashboard (9 pages, all wired)
     ├── app.py
     └── data_loader.py
 
 web/                    # Next.js 14 marketing site (10 pages, 8 components)
-deploy/oracle/          # Docker, nginx, SSL, DB schema, setup script
+├── app/                # Pages: overview, model-comparison, risk, regime, simulation, strategy, optimizer, reports, system-status, replay
+├── components/         # Sidebar, MetricCard, DataTable, StatusBadge, PlotlyChart, ExportButton, LanguageToggle, Providers
+└── lib/                # api.ts, i18n.ts
+
+api/                    # Vercel serverless Python (4 endpoints: health, portfolios, regime, risk)
+├── lib/                # auth.py (Bearer token), db.py (MockProvider + PostgreSQLProvider)
+└── *.py                # handler classes
+
+deploy/oracle/          # Docker Compose production stack
+├── docker-compose.prod.yml  # 5 services: postgres, redis, backend, nginx, certbot
+├── Dockerfile               # Multi-stage Python build (ARM64 optimized)
+├── nginx.conf               # Reverse proxy + SSL + rate limiting
+├── init-db.sql              # 11 tables + TimescaleDB hypertables + continuous aggregates
+└── setup.sh                 # Oracle Cloud setup script
+
+.claude/skills/         # 8 Claude Code skills for development
+├── fastapi-pro/        # OAuth2/JWT, async API, Pydantic V2
+├── nextjs-app-router-patterns/ # Server Components, auth context, middleware
+├── docker-expert/      # Multi-stage builds, Compose orchestration
+├── postgres-best-practices/  # Query optimization, TimescaleDB, RLS
+├── ui-ux-pro-max/      # Design system, SaaS/fintech UI rules
+├── frontend-design/    # Distinctive interfaces (Anthropic official)
+├── e2e-testing/        # Playwright POM, OAuth mocking
+└── tailwind-design-system/ # Design tokens, component library
+
 config/settings.py      # Pydantic Settings (reads .env)
-scripts/run_benchmark.py # Main entry point
+scripts/run_benchmark.py # Main entry point (BenchmarkRunner)
 tests/
 ├── unit/               # 294 unit tests
 └── integration/        # 13 integration tests (E2E pipeline + multi-agent)
@@ -181,8 +218,8 @@ tests/
 ### Data Adapters
 - All inherit from `BaseDataAdapter` ABC
 - 7 yfinance adapters (JPX, SSE, HKEX, EURONEXT, LSE, BOND, COMMODITIES) inherit from `YFinanceBaseAdapter` in `yfinance_base.py`
-- `YFinanceAdapterConfig` dataclass controls market, currency, symbols, and field extraction per adapter
-- v1 adapters (US, Crypto) still use module-level import
+- `YFinanceAdapterConfig` frozen dataclass controls: market, currency, symbols, field extraction, info extras
+- v1 adapters (US, Crypto) still use module-level yfinance/binance import
 - pykrx is synchronous — always wrap with `asyncio.to_thread()`
 - Macro adapters lazy-import fredapi
 
@@ -191,6 +228,19 @@ tests/
 - `get_state(model, architecture, market)` → agent portfolio
 - `get_buy_hold_state(market)` → baseline portfolio
 - `set_state()` writes back after trades
+- B&H uses `_BUY_HOLD_MODEL = ModelProvider.DEEPSEEK`, `_BUY_HOLD_ARCH = AgentArchitecture.SINGLE` as placeholder enums
+
+### RL Position Sizing
+- `GPUPositionSizer` (falls back to `RLPositionSizer` when PyTorch absent)
+- `decide(signal, portfolio)` → `SizingDecision` with `scaled_weight`
+- Applied via `dataclasses.replace(sig, weight=sizing.scaled_weight)` before `execute_signal()`
+- Q-learning update after each trade with normalized reward
+- Model saved/loaded at cycle boundaries
+
+### Crash Recovery
+- `_try_restore()` in `BenchmarkRunner` reads `equity_curves.jsonl` + `status.json`
+- Matches portfolios by `(model, architecture, market)` tuple (NOT portfolio_id, since UUIDs regenerate)
+- Uses `seen` set to prevent B&H duplicate records from overwriting agent portfolios
 
 ## Common Pitfalls (Avoid These)
 
@@ -203,6 +253,7 @@ tests/
 - `src/reports/` and `web/app/reports/` may be gitignored — use `git add -f`
 - ExportButton in frontend is **default export** (NOT named export)
 - Async controller tests: use `asyncio.get_event_loop().run_until_complete()`
+- B&H portfolio shares `(DEEPSEEK, SINGLE)` enum keys with real agent — handle collisions in crash recovery
 
 ## Testing Conventions
 
@@ -212,3 +263,42 @@ tests/
 - Test files mirror source: `src/simulator/order_engine.py` → `tests/unit/test_order_engine.py`
 - Mock LLM adapter pattern: subclass `BaseLLMAdapter`, return canned `TradingSignal`
 - Prompt routing tests: use `PromptCapturingAdapter` to verify system prompts reach correct stages
+
+## SaaS Upgrade Roadmap (v2.0)
+
+### Planned Architecture
+```
+Browser → Nginx (SSL) →
+  /api/*  → FastAPI (atlas-api container, port 8000)
+  /       → Next.js (atlas-frontend container, port 3000)
+
+FastAPI (src/api/):
+  /api/auth/login/{provider}     → Google/GitHub OAuth redirect
+  /api/auth/callback/{provider}  → OAuth callback → JWT cookie → redirect
+  /api/auth/me                   → Current user info
+  /api/auth/logout               → Clear session
+  /api/portfolios                → Tenant-scoped portfolio data
+  /api/simulations               → CRUD, creates Redis queue job
+  /api/strategies                → CRUD custom strategies
+  /api/usage                     → Usage metering stats
+
+atlas-worker: polls Redis queue, runs BenchmarkRunner with tenant_id
+```
+
+### Key Integration Points
+- `config/settings.py` — add OAuth (Google/GitHub client IDs) + JWT settings
+- `src/saas/tenant.py` — replace in-memory `TenantManager` with DB-backed `TenantRepository`
+- `deploy/oracle/init-db.sql` — add `provider`, `provider_id`, `avatar_url` to tenants table + simulation_queue table
+- `deploy/oracle/docker-compose.prod.yml` — split into atlas-api + atlas-worker + atlas-frontend
+- `web/` — add login page, auth context, route middleware, user dashboard
+
+### Dependencies to Add
+```
+fastapi>=0.115, uvicorn[standard]>=0.30, python-multipart>=0.0.9,
+authlib>=1.3, itsdangerous>=2.2
+```
+
+### Installed Skills
+8 Claude Code skills in `.claude/skills/` for guided development:
+fastapi-pro, nextjs-app-router-patterns, docker-expert, postgres-best-practices,
+ui-ux-pro-max, frontend-design, e2e-testing, tailwind-design-system
