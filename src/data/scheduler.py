@@ -1,4 +1,8 @@
-"""Market data collection scheduler with event-driven triggers."""
+"""Market data collection scheduler with event-driven triggers.
+
+STATUS: NOT YET INTEGRATED — Scheduler is implemented but not called
+from the benchmark pipeline. Ready for use with market-hours-aware scheduling.
+"""
 
 from __future__ import annotations
 

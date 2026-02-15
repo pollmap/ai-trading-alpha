@@ -1,4 +1,8 @@
-"""Multi-model consensus — ensemble signals from 4 LLMs for higher accuracy."""
+"""Multi-model consensus — ensemble signals from 4 LLMs for higher accuracy.
+
+STATUS: NOT YET INTEGRATED — Consensus engine is implemented but not called
+from the benchmark pipeline. Ready for cross-model ensemble signal aggregation.
+"""
 
 from __future__ import annotations
 

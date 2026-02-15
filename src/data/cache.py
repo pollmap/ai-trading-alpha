@@ -1,4 +1,8 @@
-"""Redis cache layer for market data."""
+"""Redis cache layer for market data.
+
+STATUS: NOT YET INTEGRATED — Redis cache is implemented but not called
+from the benchmark pipeline. Ready for use when real-time caching is needed.
+"""
 
 from __future__ import annotations
 

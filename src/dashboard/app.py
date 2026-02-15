@@ -27,10 +27,16 @@ PAGE_SYSTEM_STATUS: str = "System Status"
 PAGE_RISK_DASHBOARD: str = "Risk Dashboard"
 PAGE_REGIME_ANALYSIS: str = "Regime Analysis"
 PAGE_REPLAY_VIEWER: str = "Replay Viewer"
+PAGE_AGENT_DETAIL: str = "Agent Detail"
+PAGE_COST_MONITOR: str = "Cost Monitor"
+PAGE_MARKET_VIEW: str = "Market View"
 
 PAGES: list[str] = [
     PAGE_OVERVIEW,
     PAGE_MODEL_COMPARISON,
+    PAGE_AGENT_DETAIL,
+    PAGE_MARKET_VIEW,
+    PAGE_COST_MONITOR,
     PAGE_SYSTEM_STATUS,
     PAGE_RISK_DASHBOARD,
     PAGE_REGIME_ANALYSIS,
@@ -136,6 +142,18 @@ def main() -> None:
         render()
     elif selected_page == PAGE_REPLAY_VIEWER:
         from src.dashboard.pages.replay_viewer import render
+
+        render()
+    elif selected_page == PAGE_AGENT_DETAIL:
+        from src.dashboard.pages.agent_detail import render
+
+        render()
+    elif selected_page == PAGE_COST_MONITOR:
+        from src.dashboard.pages.cost_monitor import render
+
+        render()
+    elif selected_page == PAGE_MARKET_VIEW:
+        from src.dashboard.pages.market_view import render
 
         render()
     else:
