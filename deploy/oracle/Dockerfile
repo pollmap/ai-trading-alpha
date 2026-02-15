@@ -1,4 +1,5 @@
 # ATLAS Backend — Multi-stage build optimized for ARM64 (Oracle Cloud A1)
+# Used for both atlas-api and atlas-worker services
 FROM python:3.11-slim AS builder
 
 WORKDIR /build
@@ -36,8 +37,5 @@ USER atlas
 ENV PYTHONPATH=/app
 ENV PYTHONUNBUFFERED=1
 
-# Health check — verify the Python process is alive
-HEALTHCHECK --interval=30s --timeout=10s --retries=3 \
-    CMD python -c "import os, signal; os.kill(1, 0)" || exit 1
-
-CMD ["python", "scripts/run_benchmark.py"]
+# Default CMD — overridden by docker-compose per service
+CMD ["uvicorn", "src.api.main:app", "--host", "0.0.0.0", "--port", "8000"]

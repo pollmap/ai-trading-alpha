@@ -53,6 +53,17 @@ class Settings(BaseSettings):
     database_url_sync: SecretStr = SecretStr("postgresql://atlas:atlas@localhost:5432/atlas")
     redis_url: SecretStr = SecretStr("redis://localhost:6379/0")
 
+    # ── OAuth ────────────────────────────────────────────────────
+    google_client_id: str = ""
+    google_client_secret: SecretStr = SecretStr("")
+    github_client_id: str = ""
+    github_client_secret: SecretStr = SecretStr("")
+
+    # ── JWT & Frontend ───────────────────────────────────────────
+    atlas_jwt_secret: SecretStr = SecretStr("change-me-in-production")
+    atlas_jwt_expiry_hours: int = 24
+    frontend_url: str = "http://localhost:3000"
+
 
 _settings_instance: Settings | None = None
 

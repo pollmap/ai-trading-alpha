@@ -29,7 +29,7 @@ services:
           memory: 4G
           cpus: "1.0"
 
-  # ── Redis (Cache + Pub/Sub) ─────────────────────────────────────
+  # ── Redis (Cache + Job Queue) ─────────────────────────────────
   redis:
     image: redis:7-alpine
     container_name: atlas-redis
@@ -50,25 +50,65 @@ services:
           memory: 512M
           cpus: "0.25"
 
-  # ── ATLAS Backend (Python) ─────────────────────────────────────
-  atlas-backend:
+  # ── ATLAS API (FastAPI) ──────────────────────────────────────
+  atlas-api:
     build:
       context: ../..
       dockerfile: deploy/oracle/Dockerfile
-    container_name: atlas-backend
+    container_name: atlas-api
     restart: unless-stopped
+    command: ["uvicorn", "src.api.main:app", "--host", "0.0.0.0", "--port", "8000"]
     environment:
-      DATABASE_URL: postgresql://atlas:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}@postgres:5432/atlas
+      ATLAS_ENV: prod
+      DATABASE_URL: postgresql+asyncpg://atlas:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}@postgres:5432/atlas
+      DATABASE_URL_SYNC: postgresql://atlas:${POSTGRES_PASSWORD}@postgres:5432/atlas
       REDIS_URL: redis://redis:6379/0
-      ATLAS_API_KEY: ${ATLAS_API_KEY:-}
       ATLAS_JWT_SECRET: ${ATLAS_JWT_SECRET:?Set ATLAS_JWT_SECRET in .env}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID:-}
+      GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET:-}
+      FRONTEND_URL: ${FRONTEND_URL:-https://atlas.example.com}
+      PYTHONUNBUFFERED: "1"
+    ports:
+      - "127.0.0.1:8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - atlas_data:/app/data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+          cpus: "0.5"
+
+  # ── ATLAS Worker (Simulation Runner) ──────────────────────────
+  atlas-worker:
+    build:
+      context: ../..
+      dockerfile: deploy/oracle/Dockerfile
+    container_name: atlas-worker
+    restart: unless-stopped
+    command: ["python", "-m", "src.api.worker"]
+    environment:
+      ATLAS_ENV: prod
+      DATABASE_URL: postgresql+asyncpg://atlas:${POSTGRES_PASSWORD}@postgres:5432/atlas
+      DATABASE_URL_SYNC: postgresql://atlas:${POSTGRES_PASSWORD}@postgres:5432/atlas
+      REDIS_URL: redis://redis:6379/0
+      ATLAS_JWT_SECRET: ${ATLAS_JWT_SECRET}
       DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       PYTHONUNBUFFERED: "1"
-    ports:
-      - "8000:8000"
     depends_on:
       postgres:
         condition: service_healthy
@@ -83,6 +123,23 @@ services:
           memory: 8G
           cpus: "2.0"
 
+  # ── ATLAS Frontend (Next.js) ──────────────────────────────────
+  atlas-frontend:
+    build:
+      context: ../..
+      dockerfile: deploy/oracle/Dockerfile.frontend
+    container_name: atlas-frontend
+    restart: unless-stopped
+    environment:
+      NEXT_PUBLIC_API_BASE: ""
+    ports:
+      - "127.0.0.1:3000:3000"
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: "0.5"
+
   # ── Nginx Reverse Proxy + SSL ──────────────────────────────────
   nginx:
     image: nginx:alpine
@@ -96,7 +153,8 @@ services:
       - certbot_data:/etc/letsencrypt:ro
       - certbot_www:/var/www/certbot:ro
     depends_on:
-      - atlas-backend
+      - atlas-api
+      - atlas-frontend
 
   # ── Certbot (Auto-SSL) ────────────────────────────────────────
   certbot:
