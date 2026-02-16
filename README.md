@@ -194,6 +194,18 @@ python scripts/run_benchmark.py --market KRX US CRYPTO JPX SSE HKEX EURONEXT LSE
 
 ## Architecture
 
+### CUFA Integration Blueprint
+
+If you want to integrate ATLAS with **CUFA NEXUS / CUFA Web**, start from the staged guide below:
+
+- `docs/cufa-integration.md`
+
+The document covers:
+- target architecture split (ATLAS engine API vs NEXUS orchestration vs Web UI),
+- auth/job-sync/billing risks and mitigations,
+- phased rollout plan,
+- local/prod deployment playbooks.
+
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │                         ATLAS Architecture                      │
